@@ -12,7 +12,8 @@ public class CorsConfig implements WebMvcConfigurer {
         registry.addMapping("/**")
                 .allowedOrigins(
                         "http://localhost:5173",
-                        "https://pulse-frontend-tawny.vercel.app"
+                        "https://pulse-frontend-tawny.vercel.app",
+                        "https://pulse.odieyang.com"
                 )
                 .allowedMethods("GET", "POST", "OPTIONS")
                 .allowedHeaders("*");
