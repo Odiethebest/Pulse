@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import reactor.core.Disposable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -33,7 +35,9 @@ public class PulseOrchestrator {
     public PulseReport analyze(String topic) {
         log.info("Starting analysis for topic: {}", topic);
         List<AgentEvent> trace = new ArrayList<>();
+        Disposable traceSubscription = publisher.stream().subscribe(trace::add);
 
+        try {
         // Step 1: Plan queries
         QueryPlan plan = queryPlannerAgent.plan(topic);
 
@@ -89,6 +93,9 @@ public class PulseOrchestrator {
                 debateTriggered,
                 trace
         );
+        } finally {
+            traceSubscription.dispose();
+        }
     }
 
     private String buildPlatformDiff(SentimentResult reddit, SentimentResult twitter) {
