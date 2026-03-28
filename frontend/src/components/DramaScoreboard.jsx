@@ -19,54 +19,49 @@ function confidenceStatus(score) {
   if (score === null) {
     return {
       label: 'Pending',
-      tone: 'text-[#9ca3af] border-[#2a2a2a] bg-[#111111]',
+      tone: 'text-zinc-400 bg-zinc-900/60 border border-white/5',
     }
   }
   if (score < 40) {
     return {
       label: 'Low',
-      tone: 'text-[#fca5a5] border-[#7f1d1d]/60 bg-[#7f1d1d]/20',
+      tone: 'text-orange-300 bg-orange-950/30 border border-orange-500/20',
     }
   }
   if (score < 70) {
     return {
       label: 'Medium',
-      tone: 'text-[#fde68a] border-[#78350f]/60 bg-[#78350f]/20',
+      tone: 'text-amber-300 bg-amber-950/30 border border-amber-500/20',
     }
   }
   return {
     label: 'High',
-    tone: 'text-[#67e8f9] border-[#0e7490]/60 bg-[#0e7490]/20',
+    tone: 'text-cyan-300 bg-cyan-950/30 border border-cyan-500/20',
   }
 }
 
 function metricTone(value) {
   if (value === null) {
     return {
-      text: 'text-[#9ca3af]',
-      bar: 'bg-[#4b5563]',
-      chip: 'bg-[#111827]',
-      border: 'border-[#2a2a2a]',
+      text: 'text-zinc-400',
+      bar: 'bg-zinc-600',
     }
   }
   if (value >= 80) {
     return {
-      text: 'text-[#67e8f9]',
-      bar: 'bg-[#06b6d4]',
-      border: 'border-[#0e7490]/60',
+      text: 'text-cyan-300',
+      bar: 'bg-cyan-400',
     }
   }
-  if (value >= 50) {
+  if (value >= 60) {
     return {
-      text: 'text-[#fde68a]',
-      bar: 'bg-[#eab308]',
-      border: 'border-[#a16207]/60',
+      text: 'text-amber-300',
+      bar: 'bg-amber-400',
     }
   }
   return {
-    text: 'text-[#fdba74]',
-    bar: 'bg-[#f97316]',
-    border: 'border-[#9a3412]/60',
+    text: 'text-orange-300',
+    bar: 'bg-orange-400',
   }
 }
 
@@ -111,22 +106,22 @@ function DetailCard({ row }) {
   return (
     <div
       data-testid={`metric-card-${slug}`}
-      className={`bg-zinc-900 border rounded-xl p-3.5 transition-colors hover:bg-zinc-800/70 ${tone.border}`}
+      className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 transition-colors hover:bg-zinc-900/60"
     >
       <div className="flex items-center justify-between gap-2 mb-2">
-        <p className={`text-sm font-medium ${tone.text}`}>{row.name}</p>
+        <p className="text-sm font-medium text-zinc-100">{row.name}</p>
         <p className={`text-sm font-semibold ${tone.text}`}>{row.value ?? '--'}</p>
       </div>
 
-      <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-2.5">
+      <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-3">
         <div className={`h-full ${tone.bar}`} style={{ width: `${width}%` }} />
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-2.5">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         {row.tags.map((tag, idx) => (
           <span
             key={`${row.name}-tag-${idx}`}
-            className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700"
+            className="text-xs text-zinc-500 border border-zinc-800/50 rounded-md px-2 py-1 leading-none"
           >
             {tag}
           </span>
@@ -159,65 +154,68 @@ export default function DramaScoreboard({
     .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0]
 
   return (
-    <section
-      aria-label="confidence-profile-dashboard"
-      className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-4 md:p-5"
-    >
-      <div className="flex items-center justify-between gap-2 mb-4">
+    <section aria-label="confidence-profile-dashboard" className="rounded-2xl p-1 md:p-2">
+      <div className="flex items-center justify-between gap-2 mb-5">
         <div>
-          <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-1 font-medium">Confidence Profile</p>
-          <p className="text-sm text-[#9ca3af]">A single view from score to drivers, aligned with live drama signals.</p>
+          <p className="text-zinc-500 text-xs uppercase tracking-[0.16em] mb-1 font-medium">Confidence Profile</p>
+          <p className="text-sm text-zinc-400">Premium score view linked to narrative drivers and volatility signals.</p>
         </div>
         {debateTriggered && (
-          <span className="text-xs text-[#eab308] border border-[#eab308]/30 bg-[#eab308]/5 rounded-full px-3 py-1 leading-none w-fit">
+          <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400 leading-none">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.9)]" />
             Revised after critic review
           </span>
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
-        <div className="lg:col-span-2 border border-[#2a2a2a] bg-[#111111] rounded-xl p-4 flex flex-col justify-center">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 pb-5 border-b border-white/5">
+        <div className="lg:col-span-2 bg-zinc-900/50 rounded-2xl p-5 flex flex-col justify-center">
           <div
             className="text-white text-6xl md:text-7xl font-extrabold leading-none tracking-tight"
-            style={{ textShadow: '0 0 20px rgba(59,130,246,0.28)' }}
+            style={{ textShadow: '0 0 22px rgba(56,189,248,0.26)' }}
           >
             {score ?? '--'}
           </div>
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-sm text-[#9ca3af]">Confidence</span>
-            <span className={`text-xs rounded-full border px-2 py-0.5 ${status.tone}`}>{status.label}</span>
+            <span className="text-sm text-zinc-400">Confidence</span>
+            <span className={`text-xs rounded-full px-2.5 py-0.5 ${status.tone}`}>{status.label}</span>
           </div>
-          <p className="text-sm text-gray-400 leading-relaxed mt-3">{band.note}</p>
+          <p className="text-sm text-zinc-400 leading-relaxed mt-3">{band.note}</p>
           {(strongestCard || weakestCard) && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
+            <div className="space-y-1.5 mt-4">
               {strongestCard && (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
-                  Strongest {strongestCard.name} {strongestCard.value}
-                </span>
+                <div className="flex items-center gap-2 text-xs text-zinc-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                  <span className="text-zinc-500 uppercase tracking-wide">Strongest:</span>
+                  <span>{strongestCard.name} {strongestCard.value}</span>
+                </div>
               )}
               {weakestCard && (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
-                  Weakest {weakestCard.name} {weakestCard.value}
-                </span>
+                <div className="flex items-center gap-2 text-xs text-zinc-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-300 shadow-[0_0_8px_rgba(253,186,116,0.8)]" />
+                  <span className="text-zinc-500 uppercase tracking-wide">Weakest:</span>
+                  <span>{weakestCard.name} {weakestCard.value}</span>
+                </div>
               )}
             </div>
           )}
           {snapshotLines.length > 0 && (
-            <p className="text-xs text-zinc-500 leading-relaxed mt-2">{snapshotLines[0]}</p>
+            <p className="text-xs text-zinc-500 leading-relaxed mt-3">{snapshotLines[0]}</p>
           )}
         </div>
 
-        <div className="lg:col-span-3 border border-[#2a2a2a] bg-[#111111] rounded-xl p-3">
-          <div className="h-[280px] w-full">
+        <div className="lg:col-span-3 relative min-h-[280px]">
+          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_35%_35%,rgba(34,211,238,0.13),transparent_58%)]" />
+          <div className="h-[280px] w-full relative">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarData} outerRadius="78%">
-                <PolarGrid stroke="#2a2a2a" />
+                <PolarGrid stroke="rgba(255,255,255,0.09)" />
                 <PolarAngleAxis dataKey="name" tick={{ fill: '#a1a1aa', fontSize: 11 }} />
                 <Tooltip content={<RadarTooltip />} />
                 <Radar
                   dataKey="value"
                   stroke="#22d3ee"
-                  fill="#06b6d4"
+                  fill="#0891b2"
                   fillOpacity={0.4}
                   strokeWidth={2.2}
                 />
@@ -227,9 +225,14 @@ export default function DramaScoreboard({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {cards.map((row) => (
-          <DetailCard key={row.name} row={row} />
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-3 md:gap-4 mt-5">
+        {cards.map((row, index) => (
+          <div
+            key={row.name}
+            className={index < 3 ? 'md:col-span-2' : 'md:col-span-3'}
+          >
+            <DetailCard row={row} />
+          </div>
         ))}
       </div>
     </section>
