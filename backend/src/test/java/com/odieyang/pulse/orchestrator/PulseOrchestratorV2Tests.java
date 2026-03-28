@@ -419,6 +419,17 @@ class PulseOrchestratorV2Tests {
         }
 
         @Override
+        public String synthesizeWithCoreEntity(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment,
+                String coreEntity
+        ) {
+            return synthesize(reddit, twitter, redditSentiment, twitterSentiment);
+        }
+
+        @Override
         public String synthesize(
                 RawPosts reddit,
                 RawPosts twitter,
@@ -428,6 +439,18 @@ class PulseOrchestratorV2Tests {
         ) {
             revisionCalls.incrementAndGet();
             return "revised synthesis";
+        }
+
+        @Override
+        public String synthesizeWithCoreEntity(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment,
+                String critique,
+                String coreEntity
+        ) {
+            return synthesize(reddit, twitter, redditSentiment, twitterSentiment, critique);
         }
     }
 
@@ -447,6 +470,17 @@ class PulseOrchestratorV2Tests {
         }
 
         @Override
+        public String synthesizeWithCoreEntity(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment,
+                String coreEntity
+        ) {
+            return synthesize(reddit, twitter, redditSentiment, twitterSentiment);
+        }
+
+        @Override
         public String synthesize(
                 RawPosts reddit,
                 RawPosts twitter,
@@ -455,6 +489,18 @@ class PulseOrchestratorV2Tests {
                 String critique
         ) {
             throw new RuntimeException("revision synthesis failed");
+        }
+
+        @Override
+        public String synthesizeWithCoreEntity(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment,
+                String critique,
+                String coreEntity
+        ) {
+            return synthesize(reddit, twitter, redditSentiment, twitterSentiment, critique);
         }
     }
 

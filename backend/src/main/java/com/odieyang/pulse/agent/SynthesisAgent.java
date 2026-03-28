@@ -29,7 +29,16 @@ public class SynthesisAgent {
             ## Why It Matters
             ## Reporter Note
 
-            Rules:
+            <Style_and_Formatting_Rules>
+            1. NO RAW QUERIES: You MUST NOT copy and paste raw user query strings or malformed topic tags. You MUST paraphrase them into natural entities.
+            2. ADJECTIVE WEAVING, NO TAGS: You MUST NOT append metric adjectives as parenthetical tags. Weave them naturally into sentence structure.
+            3. LOGICAL TRANSITIONS:
+               - If consensus is stable, use concession transitions such as "While..." or "Despite...".
+               - If consensus is volatile, use warning transitions such as "Because..." or "As...".
+            4. EMBED QUOTES NATURALLY: Introduce quote evidence as part of the narrative flow, not a plain list.
+            </Style_and_Formatting_Rules>
+
+            Translation rules:
             - No raw query strings in final text. Convert query-like topic text into natural entity phrasing such as "public perception of [entity]" or "discourse around [entity]".
             - Keep every section concise, concrete, and evidence-led.
             - Every core claim in Lead and Frontline Clash must include at least one evidence tag from the Evidence Bank, for example [Q1] [Q2].
@@ -47,6 +56,24 @@ public class SynthesisAgent {
             - Use only supplied evidence tags and do not invent new tags.
             - Never output raw data blocks or labels such as "EVIDENCE BANK", "REDDIT POSTS", or "TWITTER/X POSTS".
             - Do not include any section outside this template.
+
+            <Examples>
+            [BAD EXAMPLE - DO NOT DO THIS]
+            Input:
+            - Query: "Peoples Attuide of Steve Jobs"
+            - Topic: "leadership style" (Heat: 85)
+            - Support: 65%, Oppose: 25%
+            Output:
+            While about 65% still defend public perception of Peoples Attuide of Steve Jobs, a vocal 25% actively push back. The main debate is leadership style. (fierce and explosive).
+
+            [GOOD EXAMPLE - COPY THIS STYLE]
+            Input:
+            - Query: "Peoples Attuide of Steve Jobs"
+            - Topic: "leadership style" (Heat: 85)
+            - Support: 65%, Oppose: 25%
+            Output:
+            While a 65% majority continues to fiercely defend Steve Jobs' legacy, a highly vocal 25% opposition actively pushes back against his hero-worship. At the heart of this divide is a fierce and explosive debate over his leadership style, with critics pointing to his uncompromising methods.
+            </Examples>
             """;
 
     private static final String REVISION_SYSTEM_PROMPT = """
@@ -68,18 +95,39 @@ public class SynthesisAgent {
 
     public String synthesize(RawPosts reddit, RawPosts twitter,
                              SentimentResult redditSentiment, SentimentResult twitterSentiment) {
-        return doSynthesize(reddit, twitter, redditSentiment, twitterSentiment, null, false);
+        return synthesizeWithCoreEntity(reddit, twitter, redditSentiment, twitterSentiment, null);
+    }
+
+    public String synthesizeWithCoreEntity(
+            RawPosts reddit,
+            RawPosts twitter,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment,
+            String coreEntity
+    ) {
+        return doSynthesize(reddit, twitter, redditSentiment, twitterSentiment, null, coreEntity, false);
     }
 
     public String synthesize(RawPosts reddit, RawPosts twitter,
                              SentimentResult redditSentiment, SentimentResult twitterSentiment,
                              String critique) {
-        return doSynthesize(reddit, twitter, redditSentiment, twitterSentiment, critique, true);
+        return synthesizeWithCoreEntity(reddit, twitter, redditSentiment, twitterSentiment, critique, null);
+    }
+
+    public String synthesizeWithCoreEntity(
+            RawPosts reddit,
+            RawPosts twitter,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment,
+            String critique,
+            String coreEntity
+    ) {
+        return doSynthesize(reddit, twitter, redditSentiment, twitterSentiment, critique, coreEntity, true);
     }
 
     private String doSynthesize(RawPosts reddit, RawPosts twitter,
                                 SentimentResult redditSentiment, SentimentResult twitterSentiment,
-                                String critique, boolean isRevision) {
+                                String critique, String coreEntity, boolean isRevision) {
         String label = isRevision ? "SynthesisAgent (revision)" : "SynthesisAgent";
         publisher.publish(AgentEvent.started(label, isRevision
                 ? "Revising synthesis based on critic feedback"
@@ -87,7 +135,7 @@ public class SynthesisAgent {
         long start = System.currentTimeMillis();
 
         try {
-            String userPrompt = buildUserPrompt(reddit, twitter, redditSentiment, twitterSentiment, critique);
+            String userPrompt = buildUserPrompt(reddit, twitter, redditSentiment, twitterSentiment, critique, coreEntity);
             String systemPrompt = isRevision ? REVISION_SYSTEM_PROMPT : SYSTEM_PROMPT;
 
             String result = chatClient.prompt()
@@ -112,8 +160,12 @@ public class SynthesisAgent {
 
     private String buildUserPrompt(RawPosts reddit, RawPosts twitter,
                                    SentimentResult redditSentiment, SentimentResult twitterSentiment,
-                                   String critique) {
+                                   String critique, String coreEntity) {
         StringBuilder sb = new StringBuilder();
+        sb.append("=== NORMALIZED CORE ENTITY ===\n");
+        sb.append(coreEntity == null || coreEntity.isBlank() ? "not provided" : coreEntity);
+        sb.append("\n\n");
+
         sb.append("=== REDDIT SENTIMENT ===\n");
         sb.append("Positive: %.0f%%, Negative: %.0f%%, Neutral: %.0f%%\n".formatted(
                 redditSentiment.positiveRatio() * 100,

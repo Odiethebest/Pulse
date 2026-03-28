@@ -50,6 +50,7 @@ public class PulseOrchestrator {
         try {
         // Step 1: Plan queries
         QueryPlan plan = queryPlannerAgent.plan(topic);
+        String coreEntity = extractCoreEntity(topic, plan.topicSummary());
 
         // Step 2: Fetch posts in parallel
         CompletableFuture<RawPosts> redditFuture =
@@ -94,7 +95,13 @@ public class PulseOrchestrator {
         FlipRiskResult flipRiskResult = flipRiskFuture.join();
 
         // Step 4: Initial synthesis
-        String synthesis = synthesisAgent.synthesize(reddit, twitter, redditSentiment, twitterSentiment);
+        String synthesis = synthesisAgent.synthesizeWithCoreEntity(
+                reddit,
+                twitter,
+                redditSentiment,
+                twitterSentiment,
+                coreEntity
+        );
 
         // Step 5: Critic evaluation
         CriticResult critique = criticAgent.critique(synthesis, reddit, twitter);
@@ -104,9 +111,14 @@ public class PulseOrchestrator {
         String rewriteGuidance = buildRewriteGuidance(critique);
         if (rewriteGuidance != null) {
             try {
-                synthesis = synthesisAgent.synthesize(
-                        reddit, twitter, redditSentiment, twitterSentiment,
-                        rewriteGuidance);
+                synthesis = synthesisAgent.synthesizeWithCoreEntity(
+                        reddit,
+                        twitter,
+                        redditSentiment,
+                        twitterSentiment,
+                        rewriteGuidance,
+                        coreEntity
+                );
                 debateTriggered = true;
             } catch (Exception revisionError) {
                 log.warn("Revision synthesis failed, fallback to initial synthesis: {}",
@@ -124,7 +136,7 @@ public class PulseOrchestrator {
         List<FlipSignal> flipSignals = chooseFlipSignals(flipRiskResult, critique);
         List<String> revisionDelta = chooseRevisionDelta(critique);
         List<ClaimEvidenceLink> claimEvidenceMap = buildClaimEvidenceMap(
-                topic,
+                coreEntity,
                 campDistribution,
                 controversyTopics,
                 heatScore,
@@ -143,7 +155,7 @@ public class PulseOrchestrator {
         );
         synthesis = finalizeSynthesis(
                 synthesis,
-                topic,
+                coreEntity,
                 quickTake,
                 controversyTopics,
                 flipSignals,
@@ -312,7 +324,7 @@ public class PulseOrchestrator {
     }
 
     private List<ClaimEvidenceLink> buildClaimEvidenceMap(
-            String topic,
+            String coreEntity,
             CampDistribution campDistribution,
             List<ControversyTopic> topics,
             int heatScore,
@@ -322,11 +334,13 @@ public class PulseOrchestrator {
             SentimentResult twitterSentiment
     ) {
         List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
-        String smoothTopic = smoothTopicEntity(topic);
+        String smoothTopic = coreEntity == null || coreEntity.isBlank() ? "the subject" : coreEntity;
         int supportPct = (int) Math.round(nz(campDistribution.support()) * 100);
         int opposePct = (int) Math.round(nz(campDistribution.oppose()) * 100);
         int neutralPct = (int) Math.round(nz(campDistribution.neutral()) * 100);
-        String mainAspect = topics.isEmpty() ? "overall narrative clash" : topics.getFirst().aspect();
+        String mainAspect = topics.isEmpty() || topics.getFirst().aspect() == null || topics.getFirst().aspect().isBlank()
+                ? "the core narrative conflict"
+                : topics.getFirst().aspect();
         String campLine = "While about %d%% still defend %s, a vocal %d%% actively push back, and %d%% remain cautious observers."
                 .formatted(supportPct, smoothTopic, opposePct, neutralPct);
         String heatLine = "The dispute around \"%s\" has moved into a %s stage, with \"%s\" becoming the central flashpoint."
@@ -368,7 +382,15 @@ public class PulseOrchestrator {
         return "relatively stable for now";
     }
 
-    private String smoothTopicEntity(String topic) {
+    private String extractCoreEntity(String rawTopic, String topicSummary) {
+        String fromSummary = normalizeEntity(topicSummary);
+        if (!fromSummary.equals("the subject")) {
+            return fromSummary;
+        }
+        return normalizeEntity(rawTopic);
+    }
+
+    private String normalizeEntity(String topic) {
         if (topic == null || topic.isBlank()) {
             return "the subject";
         }
@@ -378,12 +400,23 @@ public class PulseOrchestrator {
                 .replaceAll("(?i)public\\s+opinion\\s+on\\s+", "")
                 .replaceAll("(?i)discussion\\s+about\\s+", "")
                 .replaceAll("(?i)debate\\s+over\\s+", "")
+                .replaceAll("(?i)topic\\s*[:：]\\s*", "")
+                .replaceAll("(?i)summary\\s*[:：]\\s*", "")
+                .replaceAll("(?i)site:[^\\s]+", "")
+                .replaceAll("(?i)\\b(and|or|not)\\b", " ")
                 .replaceAll("[\"'`]+", "")
+                .replaceAll("[#*_]+", " ")
+                .replaceAll("[\\[\\]{}()]+", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
 
         if (cleaned.isBlank()) {
             return "the subject";
+        }
+        if (cleaned.toLowerCase().startsWith("public perception of ")
+                || cleaned.toLowerCase().startsWith("discourse around ")
+                || cleaned.toLowerCase().startsWith("debate around ")) {
+            return cleaned;
         }
         return "public perception of " + cleaned;
     }
@@ -400,7 +433,7 @@ public class PulseOrchestrator {
 
     private String finalizeSynthesis(
             String synthesis,
-            String topic,
+            String coreEntity,
             List<String> quickTake,
             List<ControversyTopic> controversyTopics,
             List<FlipSignal> flipSignals,
@@ -414,7 +447,7 @@ public class PulseOrchestrator {
         }
         log.warn("Synthesis format is weak or contains raw dump markers, using deterministic reporter fallback.");
         return buildReporterFallback(
-                topic,
+                coreEntity,
                 quickTake,
                 controversyTopics,
                 flipSignals,
@@ -446,11 +479,13 @@ public class PulseOrchestrator {
         return !(lower.contains("=== evidence bank")
                 || lower.contains("=== reddit posts")
                 || lower.contains("=== twitter/x posts")
-                || lower.contains("=== source:"));
+                || lower.contains("=== source:")
+                || lower.matches("(?s).*\\b\\d{1,3}\\s*/\\s*100\\b.*")
+                || lower.matches("(?s).*\\(\\s*(fierce|explosive|simmering|volatile|fragile)[^)]+\\).*"));
     }
 
     private String buildReporterFallback(
-            String topic,
+            String coreEntity,
             List<String> quickTake,
             List<ControversyTopic> controversyTopics,
             List<FlipSignal> flipSignals,
@@ -460,7 +495,7 @@ public class PulseOrchestrator {
             String platformDiff
     ) {
         String lead = quickTake.isEmpty()
-                ? "The discourse around %s is splitting into clear camps, and pressure is rising.".formatted(smoothTopicEntity(topic))
+                ? "The discourse around %s is splitting into clear camps, and pressure is rising.".formatted(coreEntity)
                 : quickTake.getFirst();
 
         String frontline = "While %.0f%% lean supportive, %.0f%% remain firmly opposed, and %.0f%% are still watching before committing."
