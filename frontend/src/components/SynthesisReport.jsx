@@ -53,6 +53,27 @@ function parseReporterSections(markdown) {
   return sections
 }
 
+function dedupeCampSplit(content, sectionTitle) {
+  if (sectionTitle !== 'Frontline Clash' || typeof content !== 'string') {
+    return content
+  }
+  const sentences = content
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+
+  const filtered = sentences.filter((sentence) => {
+    const hasPct = /\b\d{1,3}%\b/.test(sentence)
+    const hasCampTerms = /(support|oppose|neutral|majority|minority|watching)/i.test(sentence)
+    return !(hasPct && hasCampTerms)
+  })
+
+  if (filtered.length === 0) {
+    return 'Camp split percentages are shown in the Camp Battle module above. This section focuses on argument direction and momentum.'
+  }
+  return filtered.join(' ')
+}
+
 function ChevronIcon({ open }) {
   return (
     <svg
@@ -178,11 +199,16 @@ export default function SynthesisReport({
 
           {reporterSections ? (
             REPORTER_SECTION_ORDER.map((title) => {
-              const content = reporterSections[title]
+              const content = dedupeCampSplit(reporterSections[title], title)
               if (!content) return null
               return (
                 <section key={title} className="mb-7 last:mb-0">
                   <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-2">{title}</h3>
+                  {title === 'Frontline Clash' && (
+                    <p className="text-xs text-[#6b7280] mb-2">
+                      Camp ratio details are centralized in the Camp Battle module.
+                    </p>
+                  )}
                   {title === 'Top Controversies' ? (
                     <div className="border border-[#2a2a2a] rounded-lg p-3 bg-[#111111]">
                       <ReactMarkdown components={mdComponents}>

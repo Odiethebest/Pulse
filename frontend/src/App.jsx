@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePulse } from './hooks/usePulse'
 import { keepAlive } from './lib/api'
 import SearchBar from './components/SearchBar'
@@ -11,23 +11,21 @@ import ControversyBoard from './components/ControversyBoard'
 import RevisionDeltaPanel from './components/RevisionDeltaPanel'
 import GlobalRunStatus from './components/GlobalRunStatus'
 import AgentTraceDrawer from './components/AgentTraceDrawer'
+import { buildControversyItems } from './lib/controversyMapper'
 import './App.css'
-
-function pct(value) {
-  const n = Number(value ?? 0)
-  return `${Math.round(Math.max(0, Math.min(1, n)) * 100)}%`
-}
 
 export default function App() {
   useEffect(() => keepAlive(), [])
 
   const { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit } = usePulse()
   const [activeClaimId, setActiveClaimId] = useState(null)
+  const [activeAspect, setActiveAspect] = useState(null)
   const [traceOpen, setTraceOpen] = useState(false)
 
   useEffect(() => {
     const firstClaimId = report?.claimEvidenceMap?.[0]?.claimId ?? null
     setActiveClaimId(firstClaimId)
+    setActiveAspect(null)
   }, [report])
 
   useEffect(() => {
@@ -40,6 +38,7 @@ export default function App() {
   const isError    = status === 'error'
   const hasResult  = isLoading || isComplete || isError
   const quickTake  = report?.quickTake ?? []
+  const controversyItems = useMemo(() => buildControversyItems(report), [report])
   const heroLine = quickTake[0]
     ?? (isLoading
       ? 'Scanning cross platform chatter and extracting the dominant conflict line.'
@@ -51,7 +50,6 @@ export default function App() {
       : quickTake[0]
         ? 'The line above is the primary conclusion. Use the dashboard to validate confidence and volatility.'
         : 'Run another query to generate a new public opinion snapshot.')
-  const camp = report?.campDistribution
 
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
@@ -92,22 +90,7 @@ export default function App() {
             <p className="text-sm text-[#9ca3af] leading-relaxed mt-2">
               {heroSubline}
             </p>
-            {camp && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                <span className="text-xs text-[#86efac] border border-[#14532d]/50 bg-[#14532d]/20 rounded-full px-2.5 py-1">
-                  Support {pct(camp.support)}
-                </span>
-                <span className="text-xs text-[#fca5a5] border border-[#7f1d1d]/50 bg-[#7f1d1d]/20 rounded-full px-2.5 py-1">
-                  Oppose {pct(camp.oppose)}
-                </span>
-                <span className="text-xs text-[#cbd5e1] border border-[#334155]/60 bg-[#1e293b]/25 rounded-full px-2.5 py-1">
-                  Neutral {pct(camp.neutral)}
-                </span>
-              </div>
-            )}
-            {!camp && isLoading && (
-              <p className="text-xs text-[#6b7280] mt-3">Camp split will appear once stance analysis finishes.</p>
-            )}
+            <p className="text-xs text-[#6b7280] mt-3">Camp split percentages are centralized in Camp Battle below.</p>
           </div>
 
           <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4" style={{ animationDelay: '80ms' }}>
@@ -175,7 +158,11 @@ export default function App() {
               </div>
 
               <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
-                <ControversyBoard topics={report.controversyTopics} />
+                <ControversyBoard
+                  items={controversyItems}
+                  activeAspect={activeAspect}
+                  onAspectSelect={setActiveAspect}
+                />
               </div>
 
               <div className="animate-fade-up" style={{ animationDelay: '100ms' }}>
@@ -184,6 +171,9 @@ export default function App() {
                   twitterSentiment={report.twitterSentiment}
                   claimEvidenceMap={report.claimEvidenceMap}
                   activeClaimId={activeClaimId}
+                  controversyItems={controversyItems}
+                  activeAspect={activeAspect}
+                  onClearAspect={() => setActiveAspect(null)}
                 />
               </div>
 
