@@ -30,8 +30,19 @@ public class SynthesisAgent {
             ## Reporter Note
 
             Rules:
+            - No raw query strings in final text. Convert query-like topic text into natural entity phrasing such as "public perception of [entity]" or "discourse around [entity]".
             - Keep every section concise, concrete, and evidence-led.
             - Every core claim in Lead and Frontline Clash must include at least one evidence tag from the Evidence Bank, for example [Q1] [Q2].
+            - Hide the math and show the meaning. Never print raw score patterns such as "45/100", "heat at 45", or "flip risk is 65".
+            - Translate Heat and Flip Risk scores into natural language:
+              Heat <= 30: quiet or niche discussion
+              Heat 31-60: simmering or steadily intensifying debate
+              Heat > 60: fierce or explosive clash
+              Flip Risk > 60: fragile or volatile consensus
+              Flip Risk 40-60: consensus can still shift with new evidence
+              Flip Risk < 40: relatively stable narrative
+            - Use contrastive syntax in Frontline Clash. Prefer forms like "While ... , ...", "Despite ... , ...", or "In contrast, ...".
+            - Describe platform mismatch with action verbs, e.g., "Reddit dissects/scrutinizes ..." versus "Twitter amplifies/fixates on ...".
             - Do not use vague filler such as "overall", "many people believe", or "it sparked broad discussion" without specifics.
             - Use only supplied evidence tags and do not invent new tags.
             - Never output raw data blocks or labels such as "EVIDENCE BANK", "REDDIT POSTS", or "TWITTER/X POSTS".
@@ -45,6 +56,9 @@ public class SynthesisAgent {
             Revision priorities:
             - remove unsupported claims or add explicit qualifiers
             - strengthen weak claims with concrete evidence tags
+            - smooth awkward entities and remove raw query fragments
+            - convert score language into narrative descriptors rather than numbers
+            - use contrastive syntax for camp distribution
             - reduce repetitive and generic phrasing
             - preserve readability and section structure
             """;
