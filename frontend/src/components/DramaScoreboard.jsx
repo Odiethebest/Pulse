@@ -110,7 +110,7 @@ function DetailCard({ row }) {
     >
       <div className="flex items-center justify-between gap-2 mb-2">
         <p className="text-sm font-medium text-zinc-100">{row.name}</p>
-        <p className={`text-sm font-semibold ${tone.text}`}>{row.value ?? '--'}</p>
+        <p className={`text-2xl leading-none font-bold ${tone.text}`}>{row.value ?? '--'}</p>
       </div>
 
       <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-3">
@@ -169,7 +169,7 @@ export default function DramaScoreboard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 pb-5 border-b border-white/5">
-        <div className="lg:col-span-2 bg-zinc-900/50 rounded-2xl p-5 flex flex-col justify-center">
+        <div className="lg:col-span-2 bg-transparent border-none rounded-none p-5 flex flex-col justify-center">
           <div
             className="text-white text-6xl md:text-7xl font-extrabold leading-none tracking-tight"
             style={{ textShadow: '0 0 22px rgba(56,189,248,0.26)' }}
@@ -208,7 +208,7 @@ export default function DramaScoreboard({
           <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_35%_35%,rgba(34,211,238,0.13),transparent_58%)]" />
           <div className="h-[280px] w-full relative">
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData} outerRadius="78%">
+              <RadarChart data={radarData} outerRadius="85%">
                 <PolarGrid stroke="rgba(255,255,255,0.09)" />
                 <PolarAngleAxis dataKey="name" tick={{ fill: '#a1a1aa', fontSize: 11 }} />
                 <Tooltip content={<RadarTooltip />} />
