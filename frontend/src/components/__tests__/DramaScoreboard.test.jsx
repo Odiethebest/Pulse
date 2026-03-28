@@ -14,7 +14,13 @@ describe('DramaScoreboard', () => {
         }}
         confidenceScore={86}
         debateTriggered={false}
-        confidenceBreakdown={null}
+        confidenceBreakdown={{
+          coverage: 100,
+          diversity: 80,
+          agreement: 55,
+          evidenceSupport: 40,
+          stability: 35,
+        }}
       />
     )
 
@@ -23,14 +29,15 @@ describe('DramaScoreboard', () => {
     expect(screen.getByText('Heat')).toBeInTheDocument()
     expect(screen.getByText('Flip Risk')).toBeInTheDocument()
     expect(screen.getByText('Snapshot to Confidence Mapping')).toBeInTheDocument()
-    expect(screen.getByText('Coverage')).toBeInTheDocument()
-    expect(screen.getByText('Diversity')).toBeInTheDocument()
+    expect(screen.getByText('Confidence Profile')).toBeInTheDocument()
+    expect(screen.getAllByText('Coverage').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Diversity').length).toBeGreaterThan(0)
     expect(screen.getByText('Evidence Support')).toBeInTheDocument()
-    expect(screen.getByText('Stability')).toBeInTheDocument()
-    expect(screen.getByText('0')).toBeInTheDocument()
-    expect(screen.getByText('100')).toBeInTheDocument()
-    expect(screen.getByText('74')).toBeInTheDocument()
-    expect(screen.getByText('39')).toBeInTheDocument()
+    expect(screen.getAllByText('Stability').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('100').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('74').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('39').length).toBeGreaterThan(0)
   })
 
   it('shows pending state when metric values are missing', () => {
@@ -44,6 +51,7 @@ describe('DramaScoreboard', () => {
     )
 
     expect(screen.getAllByText('Pending report').length).toBeGreaterThan(0)
+    expect(screen.getByText('Waiting for confidence breakdown data.')).toBeInTheDocument()
     expect(screen.getByText('Run analysis to compute confidence.')).toBeInTheDocument()
   })
 })

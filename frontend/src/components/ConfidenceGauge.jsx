@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import {
+  getConfidenceState,
+  normalizeConfidenceBreakdown,
+} from '../lib/metricSemantics'
 
 const CX = 80
 const CY = 80
@@ -14,23 +18,6 @@ function arcColor(score) {
   return '#22c55e'
 }
 
-function metricLabel(key) {
-  return {
-    coverage: 'Coverage',
-    diversity: 'Diversity',
-    agreement: 'Agreement',
-    evidenceSupport: 'Evidence',
-    stability: 'Stability',
-  }[key] || key
-}
-
-function scoreState(score) {
-  if (score === null) return { label: 'Pending', color: 'text-[#9ca3af]' }
-  if (score < 40) return { label: 'Low', color: 'text-[#ef4444]' }
-  if (score < 70) return { label: 'Medium', color: 'text-[#eab308]' }
-  return { label: 'High', color: 'text-[#22c55e]' }
-}
-
 export default function ConfidenceGauge({ score = null, debateTriggered = false, breakdown = null }) {
   const [animScore, setAnimScore] = useState(0)
 
@@ -40,14 +27,14 @@ export default function ConfidenceGauge({ score = null, debateTriggered = false,
     return () => clearTimeout(t)
   }, [score])
 
-  const breakdownEntries = breakdown
-    ? Object.entries(breakdown).filter(([, value]) => typeof value === 'number')
-    : []
+  const breakdownEntries = normalizeConfidenceBreakdown(breakdown)
+    .filter((item) => item.value !== null)
+    .map((item) => [item.key, item.value, item.label])
 
   const offset = ARC_LEN * (1 - animScore / 100)
   const color  = arcColor(score ?? 0)
   const label  = score !== null ? String(score) : '--'
-  const state = scoreState(score)
+  const state = getConfidenceState(score)
 
   return (
     <div className="flex flex-col items-center gap-2.5">
@@ -112,9 +99,9 @@ export default function ConfidenceGauge({ score = null, debateTriggered = false,
 
       {breakdownEntries.length > 0 && (
         <div className="w-full max-w-[220px] border border-[#2a2a2a] rounded-lg p-2.5 bg-[#111111] space-y-1.5">
-          {breakdownEntries.map(([key, value]) => (
+          {breakdownEntries.map(([key, value, labelText]) => (
             <div key={key} className="flex items-center justify-between text-xs gap-2">
-              <span className="text-[#6b7280]">{metricLabel(key)}</span>
+              <span className="text-[#6b7280]">{labelText}</span>
               <span className="text-[#d1d5db] font-medium">{value}</span>
             </div>
           ))}
