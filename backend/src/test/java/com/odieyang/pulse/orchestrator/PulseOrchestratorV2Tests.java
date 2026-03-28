@@ -114,6 +114,31 @@ class PulseOrchestratorV2Tests {
         assertFalse(report.quickTake().isEmpty());
     }
 
+    @Test
+    void analyzeShouldTriggerRewriteWhenQualityGateFails() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new QualityGateCriticAgent(),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "confidenceThreshold", 60);
+        ReflectionTestUtils.setField(orchestrator, "minInformationDensity", 55);
+        ReflectionTestUtils.setField(orchestrator, "minClaimEvidenceCoverage", 60);
+
+        PulseReport report = orchestrator.analyze("Quality gate topic");
+
+        assertTrue(report.debateTriggered(), "Quality gate rewrite should mark debateTriggered");
+        assertEquals("revised synthesis", report.synthesis());
+    }
+
     private PulseOrchestrator buildOrchestrator(
             QueryPlannerAgent queryPlannerAgent,
             RedditAgent redditAgent,
@@ -467,6 +492,28 @@ class PulseOrchestratorV2Tests {
                     "Stay within evidence",
                     List.of("Missing cross-platform quote"),
                     List.of()
+            );
+        }
+    }
+
+    private static class QualityGateCriticAgent extends CriticAgent {
+        QualityGateCriticAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public CriticResult critique(String synthesis, RawPosts reddit, RawPosts twitter) {
+            return new CriticResult(
+                    List.of(),
+                    List.of(),
+                    false,
+                    82,
+                    "Keep claims tightly evidence-backed.",
+                    List.of("Missing direct source for one key claim"),
+                    List.of(),
+                    List.of("Generic wording in lead section"),
+                    42,
+                    45
             );
         }
     }

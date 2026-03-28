@@ -36,6 +36,12 @@ public class PulseOrchestrator {
     @Value("${debate.confidence.threshold:60}")
     private int confidenceThreshold;
 
+    @Value("${debate.quality.min-density:55}")
+    private int minInformationDensity;
+
+    @Value("${debate.quality.min-claim-coverage:60}")
+    private int minClaimEvidenceCoverage;
+
     public PulseReport analyze(String topic) {
         log.info("Starting analysis for topic: {}", topic);
         List<AgentEvent> trace = new ArrayList<>();
@@ -93,15 +99,14 @@ public class PulseOrchestrator {
         // Step 5: Critic evaluation
         CriticResult critique = criticAgent.critique(synthesis, reddit, twitter);
 
-        // Step 6: Debate loop — re-synthesize if confidence is below threshold
+        // Step 6: Critic-triggered rewrite — low confidence or low writing quality
         boolean debateTriggered = false;
-        if (critique.confidenceScore() < confidenceThreshold) {
-            log.info("Confidence score {} below threshold {}, triggering revision",
-                    critique.confidenceScore(), confidenceThreshold);
+        String rewriteGuidance = buildRewriteGuidance(critique);
+        if (rewriteGuidance != null) {
             try {
                 synthesis = synthesisAgent.synthesize(
                         reddit, twitter, redditSentiment, twitterSentiment,
-                        critique.revisionSuggestions());
+                        rewriteGuidance);
                 debateTriggered = true;
             } catch (Exception revisionError) {
                 log.warn("Revision synthesis failed, fallback to initial synthesis: {}",
@@ -166,6 +171,47 @@ public class PulseOrchestrator {
         } finally {
             traceSubscription.dispose();
         }
+    }
+
+    private String buildRewriteGuidance(CriticResult critique) {
+        String revisionSuggestions = critique.revisionSuggestions();
+        boolean lowConfidence = critique.confidenceScore() < confidenceThreshold;
+        boolean lowDensity = critique.informationDensityScore() != null
+                && critique.informationDensityScore() < minInformationDensity;
+        boolean lowCoverage = critique.claimEvidenceCoverage() != null
+                && critique.claimEvidenceCoverage() < minClaimEvidenceCoverage;
+        boolean hasFluff = critique.fluffFindings() != null && !critique.fluffFindings().isEmpty();
+
+        if (!(lowConfidence || lowDensity || lowCoverage || hasFluff)) {
+            return null;
+        }
+
+        StringBuilder guidance = new StringBuilder();
+        if (revisionSuggestions != null && !revisionSuggestions.isBlank()) {
+            guidance.append(revisionSuggestions.trim());
+        } else {
+            guidance.append("Tighten claims to evidence and remove vague language.");
+        }
+
+        if (lowConfidence) {
+            guidance.append("\n- Confidence is below threshold, qualify uncertain claims.");
+        }
+        if (lowDensity) {
+            guidance.append("\n- Increase information density with concrete entities, actions, and numbers.");
+        }
+        if (lowCoverage) {
+            guidance.append("\n- Improve claim-to-evidence coverage and cite evidence tags for key claims.");
+        }
+        if (hasFluff) {
+            guidance.append("\n- Remove repetitive and generic lines flagged as fluff.");
+        }
+
+        log.info("Critic-triggered rewrite enabled: confidence={}, density={}, claimCoverage={}, fluffCount={}",
+                critique.confidenceScore(),
+                critique.informationDensityScore(),
+                critique.claimEvidenceCoverage(),
+                critique.fluffFindings() == null ? 0 : critique.fluffFindings().size());
+        return guidance.toString();
     }
 
     private String buildPlatformDiff(SentimentResult reddit, SentimentResult twitter) {

@@ -28,7 +28,10 @@ public class CriticAgent {
               "confidenceScore": <0-100>,
               "revisionSuggestions": "specific actionable guidance for improving the report",
               "evidenceGaps": ["gap1", "gap2"],
-              "deltaHighlights": ["change1", "change2"]
+              "deltaHighlights": ["change1", "change2"],
+              "fluffFindings": ["finding1", "finding2"],
+              "informationDensityScore": <0-100>,
+              "claimEvidenceCoverage": <0-100>
             }
 
             Scoring guide for confidenceScore:
@@ -44,6 +47,9 @@ public class CriticAgent {
             - revisionSuggestions: concrete, actionable guidance (not just "be more balanced")
             - evidenceGaps: concrete missing evidence links or weakly supported statements
             - deltaHighlights: concise before-after change points required in revision
+            - fluffFindings: list vague, repetitive, or generic lines that add little information
+            - informationDensityScore: how information-rich the report is, where 100 is high density
+            - claimEvidenceCoverage: percentage of core claims that are explicitly evidence-backed
             - Output valid JSON only, no markdown fences
             """;
 
@@ -65,10 +71,14 @@ public class CriticAgent {
 
             long duration = System.currentTimeMillis() - start;
             int gaps = result.evidenceGaps() == null ? 0 : result.evidenceGaps().size();
+            String density = result.informationDensityScore() == null ? "n/a" : result.informationDensityScore().toString();
+            String coverage = result.claimEvidenceCoverage() == null ? "n/a" : result.claimEvidenceCoverage().toString();
             publisher.publish(AgentEvent.completed("CriticAgent",
-                    "Confidence: %d/100, evidence gaps: %d".formatted(result.confidenceScore(), gaps), duration));
-            log.info("CriticAgent completed in {}ms, confidence={}, evidenceGaps={}",
-                    duration, result.confidenceScore(), gaps);
+                    "Confidence: %d/100, evidence gaps: %d, density: %s, claim coverage: %s"
+                            .formatted(result.confidenceScore(), gaps, density, coverage),
+                    duration));
+            log.info("CriticAgent completed in {}ms, confidence={}, evidenceGaps={}, density={}, claimCoverage={}",
+                    duration, result.confidenceScore(), gaps, density, coverage);
             return result;
 
         } catch (Exception e) {

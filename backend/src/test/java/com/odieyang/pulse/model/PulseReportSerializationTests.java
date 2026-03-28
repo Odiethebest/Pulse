@@ -117,6 +117,9 @@ class PulseReportSerializationTests {
         assertNull(report.claimEvidenceMap());
         assertNull(report.critique().evidenceGaps());
         assertNull(report.critique().deltaHighlights());
+        assertNull(report.critique().fluffFindings());
+        assertNull(report.critique().informationDensityScore());
+        assertNull(report.critique().claimEvidenceCoverage());
     }
 
     private SentimentResult sentiment(String platform) {
