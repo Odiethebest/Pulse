@@ -232,8 +232,8 @@ export default function AgentGraph({ agentEvents = [], runStatus = 'idle' }) {
   )
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[#2a2a2a]">
-      <div style={{ height: 300, minWidth: 1220 }}>
+    <div className="overflow-hidden rounded-xl border border-[#2a2a2a]">
+      <div style={{ height: 300, width: '100%' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -247,7 +247,7 @@ export default function AgentGraph({ agentEvents = [], runStatus = 'idle' }) {
         zoomOnScroll={false}
         zoomOnPinch={false}
         zoomOnDoubleClick={false}
-        preventScrolling={false}
+        preventScrolling
         proOptions={{ hideAttribution: true }}
         style={{ background: '#0f0f0f' }}
       />
