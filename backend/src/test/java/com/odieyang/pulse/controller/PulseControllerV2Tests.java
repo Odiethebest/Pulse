@@ -48,7 +48,10 @@ class PulseControllerV2Tests {
                 .andExpect(jsonPath("$.campDistribution.support").value(0.46))
                 .andExpect(jsonPath("$.controversyTopics[0].aspect").value("Pricing"))
                 .andExpect(jsonPath("$.flipSignals[0].signal").value("Evidence gap"))
-                .andExpect(jsonPath("$.revisionDelta[0]").value("Removed unsupported claim"));
+                .andExpect(jsonPath("$.revisionDelta[0]").value("Removed unsupported claim"))
+                .andExpect(jsonPath("$.claimAnnotations[0].annotationId").value("ann-1"))
+                .andExpect(jsonPath("$.riskFlags[0].flagId").value("risk-gap-1"))
+                .andExpect(jsonPath("$.revisionAnchors[0].anchorId").value("rev-1"));
     }
 
     private PulseReport sampleReport() {
@@ -109,6 +112,29 @@ class PulseControllerV2Tests {
                         "C1",
                         "Support is 46% vs oppose 39%",
                         List.of("https://reddit.com/r/test", "https://x.com/test")
+                )),
+                List.of(new ClaimAnnotation(
+                        "ann-1",
+                        "Lead",
+                        "C1",
+                        "Clarified claim language",
+                        "Tighten evidence language",
+                        "rev-1"
+                )),
+                List.of(new RiskFlag(
+                        "risk-gap-1",
+                        "Top Controversies",
+                        "warning",
+                        "Evidence Gap",
+                        "Need direct quote for claim A",
+                        "C1"
+                )),
+                List.of(new RevisionAnchor(
+                        "rev-1",
+                        "Lead",
+                        "Revision 1",
+                        "Removed unsupported claim",
+                        "C1"
                 ))
         );
     }

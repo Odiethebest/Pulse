@@ -44,7 +44,30 @@ class PulseReportSerializationTests {
                 List.of(new ControversyTopic("Pricing", 71, "price fight")),
                 List.of(new FlipSignal("Evidence gap", 64, "weak citation chain")),
                 List.of("removed weak claim"),
-                List.of(new ClaimEvidenceLink("C1", "Claim text", List.of("https://reddit.com/test")))
+                List.of(new ClaimEvidenceLink("C1", "Claim text", List.of("https://reddit.com/test"))),
+                List.of(new ClaimAnnotation(
+                        "ann-1",
+                        "Lead",
+                        "C1",
+                        "Clarified camp split language",
+                        "Critic requested stronger source linkage.",
+                        "rev-1"
+                )),
+                List.of(new RiskFlag(
+                        "risk-gap-1",
+                        "Top Controversies",
+                        "warning",
+                        "Evidence Gap",
+                        "Need one more supporting source for C1",
+                        "C1"
+                )),
+                List.of(new RevisionAnchor(
+                        "rev-1",
+                        "Lead",
+                        "Revision 1",
+                        "Clarified camp split language",
+                        "C1"
+                ))
         );
 
         JsonNode root = objectMapper.readTree(objectMapper.writeValueAsString(report));
@@ -61,6 +84,9 @@ class PulseReportSerializationTests {
         assertEquals("removed weak claim", root.get("revisionDelta").get(0).asText());
         assertEquals("C1", root.get("claimEvidenceMap").get(0).get("claimId").asText());
         assertEquals("https://reddit.com/test", root.get("claimEvidenceMap").get(0).get("evidenceUrls").get(0).asText());
+        assertEquals("ann-1", root.get("claimAnnotations").get(0).get("annotationId").asText());
+        assertEquals("risk-gap-1", root.get("riskFlags").get(0).get("flagId").asText());
+        assertEquals("rev-1", root.get("revisionAnchors").get(0).get("anchorId").asText());
         assertEquals("support", root.get("redditSentiment").get("representativeQuotes").get(0).get("camp").asText());
         assertEquals(0.8, root.get("redditSentiment").get("representativeQuotes").get(0).get("evidenceWeight").asDouble(), 0.0001);
     }
@@ -115,6 +141,9 @@ class PulseReportSerializationTests {
         assertNull(report.flipSignals());
         assertNull(report.revisionDelta());
         assertNull(report.claimEvidenceMap());
+        assertNull(report.claimAnnotations());
+        assertNull(report.riskFlags());
+        assertNull(report.revisionAnchors());
         assertNull(report.critique().evidenceGaps());
         assertNull(report.critique().deltaHighlights());
         assertNull(report.critique().fluffFindings());

@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import InlineCriticNote from './InlineCriticNote'
+import RiskBadge from './RiskBadge'
 
 const mdComponents = {
   h1: ({ children }) => <h2 className="text-xl font-semibold text-white mt-8 mb-3 first:mt-0">{children}</h2>,
   h2: ({ children }) => <h2 className="text-lg font-semibold text-white mt-8 mb-3 first:mt-0">{children}</h2>,
   h3: ({ children }) => <h3 className="text-base font-semibold text-[#e5e7eb] mt-6 mb-2">{children}</h3>,
-  p:  ({ children }) => <p className="text-[#d1d5db] text-base leading-[1.8] mb-4 last:mb-0">{children}</p>,
+  p: ({ children }) => <p className="text-[#d1d5db] text-base leading-[1.8] mb-4 last:mb-0">{children}</p>,
   strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
-  em:     ({ children }) => <em className="text-[#d1d5db] italic">{children}</em>,
+  em: ({ children }) => <em className="text-[#d1d5db] italic">{children}</em>,
   ul: ({ children }) => <ul className="space-y-1.5 mb-4 pl-1">{children}</ul>,
   ol: ({ children }) => <ol className="space-y-1.5 mb-4 pl-1 list-decimal list-inside">{children}</ol>,
   li: ({ children }) => (
@@ -74,11 +76,27 @@ function dedupeCampSplit(content, sectionTitle) {
   return filtered.join(' ')
 }
 
+function groupBySection(items) {
+  const source = Array.isArray(items) ? items : []
+  return source.reduce((acc, item) => {
+    const section = item?.section || 'Reporter Note'
+    if (!acc[section]) acc[section] = []
+    acc[section].push(item)
+    return acc
+  }, {})
+}
+
 function ChevronIcon({ open }) {
   return (
     <svg
-      width={16} height={16} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
       style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.3s ease' }}
       className="text-[#6b7280] shrink-0"
     >
@@ -89,13 +107,12 @@ function ChevronIcon({ open }) {
 
 function Accordion({ title, items }) {
   const [open, setOpen] = useState(false)
-
   if (!items?.length) return null
 
   return (
     <div className="border border-[#2a2a2a] rounded-xl overflow-hidden">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-5 py-3.5 text-left hover:bg-white/[0.02] transition-colors"
       >
         <span className="text-[#9ca3af] text-sm font-medium">{title}</span>
@@ -105,12 +122,13 @@ function Accordion({ title, items }) {
         </div>
       </button>
 
-      {/* grid-template-rows trick for smooth height animation without JS measurement */}
-      <div style={{
-        display: 'grid',
-        gridTemplateRows: open ? '1fr' : '0fr',
-        transition: 'grid-template-rows 0.3s ease',
-      }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateRows: open ? '1fr' : '0fr',
+          transition: 'grid-template-rows 0.3s ease',
+        }}
+      >
         <div style={{ overflow: 'hidden' }}>
           <ul className="px-5 pb-4 pt-1 space-y-2 border-t border-[#2a2a2a]">
             {items.map((item, i) => (
@@ -126,18 +144,6 @@ function Accordion({ title, items }) {
   )
 }
 
-function TopicHeat({ topic }) {
-  const heat = Math.max(0, Math.min(100, Number(topic?.heat ?? 0)))
-  const tone = heat >= 70 ? 'text-[#ef4444] border-[#ef4444]/30 bg-[#ef4444]/10'
-    : heat >= 40 ? 'text-[#eab308] border-[#eab308]/30 bg-[#eab308]/10'
-      : 'text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10'
-  return (
-    <span className={`text-xs rounded-full px-2 py-0.5 border ${tone}`}>
-      Heat {heat}
-    </span>
-  )
-}
-
 export default function SynthesisReport({
   synthesis,
   critique,
@@ -146,10 +152,25 @@ export default function SynthesisReport({
   activeClaimId = null,
   onClaimSelect = () => {},
   revisionDelta = [],
+  claimAnnotations = [],
+  riskFlags = [],
+  revisionAnchors = [],
+  focusAnchorId = null,
 }) {
   if (!synthesis) return null
 
   const reporterSections = useMemo(() => parseReporterSections(synthesis), [synthesis])
+  const annotationsBySection = useMemo(() => groupBySection(claimAnnotations), [claimAnnotations])
+  const risksBySection = useMemo(() => groupBySection(riskFlags), [riskFlags])
+  const anchorsBySection = useMemo(() => groupBySection(revisionAnchors), [revisionAnchors])
+
+  useEffect(() => {
+    if (!focusAnchorId) return
+    const target = document.getElementById(focusAnchorId)
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [focusAnchorId, synthesis])
 
   return (
     <div>
@@ -157,8 +178,6 @@ export default function SynthesisReport({
 
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5 md:p-8">
         <div className="max-w-[720px] mx-auto">
-
-          {/* Debate banner */}
           {debateTriggered && (
             <div className="flex items-center gap-3 border-l-2 border-[#eab308] pl-4 py-1 mb-6">
               <span className="text-base leading-none">🔄</span>
@@ -201,35 +220,56 @@ export default function SynthesisReport({
             REPORTER_SECTION_ORDER.map((title) => {
               const content = dedupeCampSplit(reporterSections[title], title)
               if (!content) return null
+
+              const sectionAnnotations = annotationsBySection[title] || []
+              const sectionRisks = risksBySection[title] || []
+              const sectionAnchors = anchorsBySection[title] || []
+
               return (
                 <section key={title} className="mb-7 last:mb-0">
-                  <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-2">{title}</h3>
+                  {sectionAnchors.map((anchor) => (
+                    <span key={anchor.anchorId} id={anchor.anchorId} className="block relative -top-20" />
+                  ))}
+
+                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                    <h3 className="text-sm uppercase tracking-widest text-[#6b7280]">{title}</h3>
+                    {sectionRisks.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {sectionRisks.slice(0, 3).map((flag) => (
+                          <RiskBadge key={flag.flagId} flag={flag} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {title === 'Frontline Clash' && (
                     <p className="text-xs text-[#6b7280] mb-2">
                       Camp ratio details are centralized in the Camp Battle module.
                     </p>
                   )}
+
+                  {sectionAnnotations.length > 0 && (
+                    <div className="mb-2">
+                      {sectionAnnotations.slice(0, 2).map((annotation) => (
+                        <InlineCriticNote key={annotation.annotationId} annotation={annotation} />
+                      ))}
+                    </div>
+                  )}
+
                   {title === 'Top Controversies' ? (
                     <div className="border border-[#2a2a2a] rounded-lg p-3 bg-[#111111]">
-                      <ReactMarkdown components={mdComponents}>
-                        {content}
-                      </ReactMarkdown>
+                      <ReactMarkdown components={mdComponents}>{content}</ReactMarkdown>
                     </div>
                   ) : (
-                    <ReactMarkdown components={mdComponents}>
-                      {content}
-                    </ReactMarkdown>
+                    <ReactMarkdown components={mdComponents}>{content}</ReactMarkdown>
                   )}
                 </section>
               )
             })
           ) : (
-            <ReactMarkdown components={mdComponents}>
-              {synthesis}
-            </ReactMarkdown>
+            <ReactMarkdown components={mdComponents}>{synthesis}</ReactMarkdown>
           )}
 
-          {/* Accordions */}
           {(critique?.unsupportedClaims?.length > 0
             || critique?.biasConcerns?.length > 0
             || critique?.evidenceGaps?.length > 0
@@ -237,13 +277,12 @@ export default function SynthesisReport({
             || revisionDelta?.length > 0) && (
             <div className="mt-8 space-y-3">
               <Accordion title="Unsupported Claims" items={critique?.unsupportedClaims} />
-              <Accordion title="Bias Concerns"      items={critique?.biasConcerns} />
-              <Accordion title="Evidence Gaps"      items={critique?.evidenceGaps} />
-              <Accordion title="Fluff Findings"     items={critique?.fluffFindings} />
-              <Accordion title="Revision Delta"     items={revisionDelta} />
+              <Accordion title="Bias Concerns" items={critique?.biasConcerns} />
+              <Accordion title="Evidence Gaps" items={critique?.evidenceGaps} />
+              <Accordion title="Fluff Findings" items={critique?.fluffFindings} />
+              <Accordion title="Revision Delta" items={revisionDelta} />
             </div>
           )}
-
         </div>
       </div>
     </div>

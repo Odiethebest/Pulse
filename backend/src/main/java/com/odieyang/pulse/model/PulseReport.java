@@ -23,7 +23,10 @@ public record PulseReport(
         List<ControversyTopic> controversyTopics,
         List<FlipSignal> flipSignals,
         List<String> revisionDelta,
-        List<ClaimEvidenceLink> claimEvidenceMap
+        List<ClaimEvidenceLink> claimEvidenceMap,
+        List<ClaimAnnotation> claimAnnotations,
+        List<RiskFlag> riskFlags,
+        List<RevisionAnchor> revisionAnchors
 ) {
     public PulseReport(
             String topic,
@@ -48,6 +51,9 @@ public record PulseReport(
                 confidenceScore,
                 debateTriggered,
                 executionTrace,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

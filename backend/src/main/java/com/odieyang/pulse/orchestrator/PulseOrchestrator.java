@@ -32,6 +32,14 @@ public class PulseOrchestrator {
             "(?i)\\b(is|are|was|were|be|being|been|has|have|had|can|could|should|would|will|may|might|must|do|does|did)\\b");
     private static final Pattern CLAUSE_BREAK_PATTERN = Pattern.compile(
             "(?i)(,|;|\\.|\\b(?:because|while|although|though|but|which|that|if|when)\\b)");
+    private static final List<String> REPORTER_SECTIONS = List.of(
+            "Lead",
+            "Frontline Clash",
+            "Top Controversies",
+            "Flip Risk Watch",
+            "Why It Matters",
+            "Reporter Note"
+    );
 
     private final QueryPlannerAgent queryPlannerAgent;
     private final RedditAgent redditAgent;
@@ -157,6 +165,9 @@ public class PulseOrchestrator {
                 redditSentiment,
                 twitterSentiment
         );
+        List<RevisionAnchor> revisionAnchors = buildRevisionAnchors(revisionDelta, claimEvidenceMap);
+        List<ClaimAnnotation> claimAnnotations = buildClaimAnnotations(critique, revisionAnchors);
+        List<RiskFlag> riskFlags = buildRiskFlags(critique, flipSignals, claimEvidenceMap);
         List<String> quickTake = buildQuickTake(claimEvidenceMap);
         ConfidenceBreakdown confidenceBreakdown = buildConfidenceBreakdown(
                 critique.confidenceScore(),
@@ -201,7 +212,10 @@ public class PulseOrchestrator {
                 controversyTopics,
                 flipSignals,
                 revisionDelta,
-                claimEvidenceMap
+                claimEvidenceMap,
+                claimAnnotations,
+                riskFlags,
+                revisionAnchors
         );
         } finally {
             traceSubscription.dispose();
@@ -333,6 +347,114 @@ public class PulseOrchestrator {
                     .toList();
         }
         return List.of();
+    }
+
+    private List<RevisionAnchor> buildRevisionAnchors(
+            List<String> revisionDelta,
+            List<ClaimEvidenceLink> claimEvidenceMap
+    ) {
+        if (revisionDelta == null || revisionDelta.isEmpty()) {
+            return List.of();
+        }
+        List<RevisionAnchor> anchors = new ArrayList<>();
+        for (int i = 0; i < revisionDelta.size(); i++) {
+            String detail = revisionDelta.get(i);
+            ClaimEvidenceLink relatedClaim = claimEvidenceMap.isEmpty()
+                    ? null
+                    : claimEvidenceMap.get(Math.min(i, claimEvidenceMap.size() - 1));
+            String claimId = relatedClaim == null ? null : relatedClaim.claimId();
+            String section = resolveSectionForClaim(claimId, i);
+            anchors.add(new RevisionAnchor(
+                    "rev-" + (i + 1),
+                    section,
+                    "Revision " + (i + 1),
+                    detail,
+                    claimId
+            ));
+        }
+        return anchors;
+    }
+
+    private String resolveSectionForClaim(String claimId, int index) {
+        if ("C1".equalsIgnoreCase(claimId)) return "Lead";
+        if ("C2".equalsIgnoreCase(claimId)) return "Top Controversies";
+        if ("C3".equalsIgnoreCase(claimId)) return "Flip Risk Watch";
+        return REPORTER_SECTIONS.get(index % REPORTER_SECTIONS.size());
+    }
+
+    private List<ClaimAnnotation> buildClaimAnnotations(
+            CriticResult critique,
+            List<RevisionAnchor> revisionAnchors
+    ) {
+        if (revisionAnchors == null || revisionAnchors.isEmpty()) {
+            return List.of();
+        }
+        String criticMessage = critique == null || critique.revisionSuggestions() == null || critique.revisionSuggestions().isBlank()
+                ? "Critic requested stronger claim to evidence alignment."
+                : critique.revisionSuggestions();
+        List<ClaimAnnotation> annotations = new ArrayList<>();
+        for (int i = 0; i < revisionAnchors.size(); i++) {
+            RevisionAnchor anchor = revisionAnchors.get(i);
+            annotations.add(new ClaimAnnotation(
+                    "ann-" + (i + 1),
+                    anchor.section(),
+                    anchor.relatedClaimId(),
+                    anchor.detail(),
+                    criticMessage,
+                    anchor.anchorId()
+            ));
+        }
+        return annotations;
+    }
+
+    private List<RiskFlag> buildRiskFlags(
+            CriticResult critique,
+            List<FlipSignal> flipSignals,
+            List<ClaimEvidenceLink> claimEvidenceMap
+    ) {
+        List<RiskFlag> flags = new ArrayList<>();
+        String defaultClaimId = claimEvidenceMap == null || claimEvidenceMap.isEmpty()
+                ? null
+                : claimEvidenceMap.getFirst().claimId();
+
+        if (critique != null && critique.evidenceGaps() != null) {
+            List<String> evidenceGaps = critique.evidenceGaps();
+            for (int i = 0; i < evidenceGaps.size(); i++) {
+                String message = evidenceGaps.get(i);
+                String section = i == 0 ? "Top Controversies" : "Flip Risk Watch";
+                String claimId = claimEvidenceMap == null || claimEvidenceMap.isEmpty()
+                        ? defaultClaimId
+                        : claimEvidenceMap.get(Math.min(i, claimEvidenceMap.size() - 1)).claimId();
+                flags.add(new RiskFlag(
+                        "risk-gap-" + (i + 1),
+                        section,
+                        "warning",
+                        "Evidence Gap",
+                        message,
+                        claimId
+                ));
+            }
+        }
+
+        if (flipSignals != null && !flipSignals.isEmpty()) {
+            for (int i = 0; i < Math.min(2, flipSignals.size()); i++) {
+                FlipSignal signal = flipSignals.get(i);
+                flags.add(new RiskFlag(
+                        "risk-flip-" + (i + 1),
+                        "Flip Risk Watch",
+                        (signal.severity() != null && signal.severity() >= 70) ? "high" : "warning",
+                        signal.signal() == null || signal.signal().isBlank() ? "Narrative Volatility" : signal.signal(),
+                        signal.summary() == null || signal.summary().isBlank()
+                                ? "Narrative may shift quickly under new catalysts."
+                                : signal.summary(),
+                        claimEvidenceMap == null || claimEvidenceMap.size() < 3
+                                ? defaultClaimId
+                                : claimEvidenceMap.get(2).claimId()
+                ));
+            }
+        }
+
+        return flags;
     }
 
     private List<ClaimEvidenceLink> buildClaimEvidenceMap(

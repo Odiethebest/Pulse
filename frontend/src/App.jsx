@@ -20,12 +20,14 @@ export default function App() {
   const { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit } = usePulse()
   const [activeClaimId, setActiveClaimId] = useState(null)
   const [activeAspect, setActiveAspect] = useState(null)
+  const [focusAnchorId, setFocusAnchorId] = useState(null)
   const [traceOpen, setTraceOpen] = useState(false)
 
   useEffect(() => {
     const firstClaimId = report?.claimEvidenceMap?.[0]?.claimId ?? null
     setActiveClaimId(firstClaimId)
     setActiveAspect(null)
+    setFocusAnchorId(null)
   }, [report])
 
   useEffect(() => {
@@ -181,6 +183,8 @@ export default function App() {
                 <RevisionDeltaPanel
                   revisionDelta={report.revisionDelta}
                   critique={report.critique}
+                  revisionAnchors={report.revisionAnchors}
+                  onAnchorSelect={setFocusAnchorId}
                 />
               </div>
 
@@ -194,6 +198,10 @@ export default function App() {
                   flipSignals={report.flipSignals}
                   revisionDelta={report.revisionDelta}
                   claimEvidenceMap={report.claimEvidenceMap}
+                  claimAnnotations={report.claimAnnotations}
+                  riskFlags={report.riskFlags}
+                  revisionAnchors={report.revisionAnchors}
+                  focusAnchorId={focusAnchorId}
                   activeClaimId={activeClaimId}
                   onClaimSelect={setActiveClaimId}
                 />

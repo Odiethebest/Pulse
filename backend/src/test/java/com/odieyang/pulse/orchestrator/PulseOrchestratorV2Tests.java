@@ -57,6 +57,12 @@ class PulseOrchestratorV2Tests {
         assertEquals(3, report.quickTake().size());
         assertEquals(1, report.controversyTopics().size());
         assertEquals("Pricing", report.controversyTopics().getFirst().aspect());
+        assertNotNull(report.claimAnnotations());
+        assertFalse(report.claimAnnotations().isEmpty());
+        assertNotNull(report.riskFlags());
+        assertFalse(report.riskFlags().isEmpty());
+        assertNotNull(report.revisionAnchors());
+        assertFalse(report.revisionAnchors().isEmpty());
     }
 
     @Test
