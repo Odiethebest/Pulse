@@ -4,10 +4,9 @@ import { keepAlive } from './lib/api'
 import SearchBar from './components/SearchBar'
 import DramaScoreboard from './components/DramaScoreboard'
 import SentimentChart from './components/SentimentChart'
-import QuoteCards from './components/QuoteCards'
+import ControversyAccordion from './components/ControversyAccordion'
 import SynthesisReport from './components/SynthesisReport'
 import CampBattleBoard from './components/CampBattleBoard'
-import ControversyBoard from './components/ControversyBoard'
 import RevisionDeltaPanel from './components/RevisionDeltaPanel'
 import GlobalRunStatus from './components/GlobalRunStatus'
 import AgentTraceDrawer from './components/AgentTraceDrawer'
@@ -160,22 +159,13 @@ export default function App() {
               </div>
 
               <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
-                <ControversyBoard
+                <ControversyAccordion
                   items={controversyItems}
-                  activeAspect={activeAspect}
-                  onAspectSelect={setActiveAspect}
-                />
-              </div>
-
-              <div className="animate-fade-up" style={{ animationDelay: '100ms' }}>
-                <QuoteCards
-                  redditSentiment={report.redditSentiment}
-                  twitterSentiment={report.twitterSentiment}
+                  report={report}
                   claimEvidenceMap={report.claimEvidenceMap}
                   activeClaimId={activeClaimId}
-                  controversyItems={controversyItems}
                   activeAspect={activeAspect}
-                  onClearAspect={() => setActiveAspect(null)}
+                  onAspectSelect={setActiveAspect}
                 />
               </div>
 

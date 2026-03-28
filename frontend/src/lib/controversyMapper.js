@@ -41,6 +41,40 @@ function buildPlatformTags(aspect, redditControversies, twitterControversies, qu
   return tags
 }
 
+function platformKey(value) {
+  const source = normalize(value)
+  if (source.includes('twitter') || source === 'x') return 'Twitter'
+  return 'Reddit'
+}
+
+function dedupeQuotes(quotes) {
+  const seen = new Set()
+  return quotes.filter((quote) => {
+    const key = `${quote.url || ''}::${quote.text || ''}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function selectBalancedQuotes(scoredQuotes, fallbackQuotes) {
+  const base = dedupeQuotes([...scoredQuotes, ...fallbackQuotes])
+  const reddit = base.filter((quote) => platformKey(quote.platform) === 'Reddit').slice(0, 2)
+  const twitter = base.filter((quote) => platformKey(quote.platform) === 'Twitter').slice(0, 2)
+  const picked = dedupeQuotes([...reddit, ...twitter])
+
+  if (picked.length >= 4) {
+    return picked.slice(0, 4)
+  }
+
+  const remaining = base.filter((quote) => {
+    const key = `${quote.url || ''}::${quote.text || ''}`
+    return !picked.some((current) => `${current.url || ''}::${current.text || ''}` === key)
+  })
+
+  return dedupeQuotes([...picked, ...remaining]).slice(0, 6)
+}
+
 export function collectQuotes(report) {
   return [
     ...((report?.redditSentiment?.representativeQuotes ?? []).map((quote) => ({ ...quote, platform: 'Reddit' }))),
@@ -66,8 +100,12 @@ export function buildControversyItems(report) {
       .sort((a, b) => b.score - a.score)
       .map((item) => item.quote)
 
-    const fallbackQuotes = quotes.slice(0, 2)
-    const matchedQuotes = (scoredQuotes.length ? scoredQuotes : fallbackQuotes).slice(0, 3)
+    const fallbackQuotes = [
+      ...quotes.filter((quote) => platformKey(quote.platform) === 'Reddit').slice(0, 1),
+      ...quotes.filter((quote) => platformKey(quote.platform) === 'Twitter').slice(0, 1),
+      ...quotes.slice(0, 2),
+    ]
+    const matchedQuotes = selectBalancedQuotes(scoredQuotes, fallbackQuotes)
     const platformTags = buildPlatformTags(aspect, redditControversies, twitterControversies, matchedQuotes)
 
     return {
