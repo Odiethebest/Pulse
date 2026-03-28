@@ -98,10 +98,15 @@ public class PulseOrchestrator {
         if (critique.confidenceScore() < confidenceThreshold) {
             log.info("Confidence score {} below threshold {}, triggering revision",
                     critique.confidenceScore(), confidenceThreshold);
-            debateTriggered = true;
-            synthesis = synthesisAgent.synthesize(
-                    reddit, twitter, redditSentiment, twitterSentiment,
-                    critique.revisionSuggestions());
+            try {
+                synthesis = synthesisAgent.synthesize(
+                        reddit, twitter, redditSentiment, twitterSentiment,
+                        critique.revisionSuggestions());
+                debateTriggered = true;
+            } catch (Exception revisionError) {
+                log.warn("Revision synthesis failed, fallback to initial synthesis: {}",
+                        revisionError.getMessage());
+            }
         }
 
         String platformDiff = buildPlatformDiff(redditSentiment, twitterSentiment);
@@ -113,14 +118,17 @@ public class PulseOrchestrator {
         int dramaScore = computeDramaScore(heatScore, polarizationScore, controversyTopics);
         List<FlipSignal> flipSignals = chooseFlipSignals(flipRiskResult, critique);
         List<String> revisionDelta = chooseRevisionDelta(critique);
-        List<String> quickTake = buildQuickTake(
+        List<ClaimEvidenceLink> claimEvidenceMap = buildClaimEvidenceMap(
                 topic,
                 campDistribution,
                 controversyTopics,
                 heatScore,
                 flipRiskScore,
-                debateTriggered
+                debateTriggered,
+                redditSentiment,
+                twitterSentiment
         );
+        List<String> quickTake = buildQuickTake(claimEvidenceMap);
         ConfidenceBreakdown confidenceBreakdown = buildConfidenceBreakdown(
                 critique.confidenceScore(),
                 reddit,
@@ -152,7 +160,8 @@ public class PulseOrchestrator {
                 campDistribution,
                 controversyTopics,
                 flipSignals,
-                revisionDelta
+                revisionDelta,
+                claimEvidenceMap
         );
         } finally {
             traceSubscription.dispose();
@@ -233,27 +242,87 @@ public class PulseOrchestrator {
         return List.of();
     }
 
-    private List<String> buildQuickTake(
+    private List<ClaimEvidenceLink> buildClaimEvidenceMap(
             String topic,
             CampDistribution campDistribution,
             List<ControversyTopic> topics,
             int heatScore,
             int flipRiskScore,
-            boolean debateTriggered
+            boolean debateTriggered,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment
     ) {
+        List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
         String mainAspect = topics.isEmpty() ? "overall narrative clash" : topics.getFirst().aspect();
-        String campLine = "Topic \"%s\" shows support %.0f%% vs oppose %.0f%% with %.0f%% neutral watchers.".formatted(
-                topic,
+        String campLine = "Support is %.0f%% vs oppose %.0f%%, with %.0f%% neutral watchers on \"%s\".".formatted(
                 nz(campDistribution.support()) * 100,
                 nz(campDistribution.oppose()) * 100,
-                nz(campDistribution.neutral()) * 100
+                nz(campDistribution.neutral()) * 100,
+                topic
         );
-        String heatLine = "Fight intensity is %d/100, with the main flashpoint around %s.".formatted(heatScore, mainAspect);
+        String heatLine = "The hottest frontline is %s, and the fight intensity sits at %d/100.".formatted(
+                mainAspect,
+                heatScore
+        );
         String flipLine = "Narrative flip risk is %d/100%s.".formatted(
                 flipRiskScore,
-                debateTriggered ? " and critic-triggered revision already happened" : ""
+                debateTriggered ? ", with critic revision already attempted" : ""
         );
-        return List.of(campLine, heatLine, flipLine);
+        return List.of(
+                new ClaimEvidenceLink("C1", campLine, pickEvidenceUrls(evidenceUrls, 0, 2)),
+                new ClaimEvidenceLink("C2", heatLine, pickEvidenceUrls(evidenceUrls, 1, 2)),
+                new ClaimEvidenceLink("C3", flipLine, pickEvidenceUrls(evidenceUrls, 2, 2))
+        );
+    }
+
+    private List<String> buildQuickTake(List<ClaimEvidenceLink> claimEvidenceMap) {
+        return claimEvidenceMap.stream()
+                .limit(3)
+                .map(link -> {
+                    String refs = renderEvidenceRefs(link.evidenceUrls());
+                    return refs.isBlank() ? link.claim() : link.claim() + " " + refs;
+                })
+                .toList();
+    }
+
+    private List<String> collectEvidenceUrls(SentimentResult redditSentiment, SentimentResult twitterSentiment) {
+        List<String> urls = new ArrayList<>();
+        addQuoteUrls(urls, redditSentiment);
+        addQuoteUrls(urls, twitterSentiment);
+        return urls.stream().distinct().toList();
+    }
+
+    private void addQuoteUrls(List<String> urls, SentimentResult sentimentResult) {
+        if (sentimentResult == null || sentimentResult.representativeQuotes() == null) {
+            return;
+        }
+        sentimentResult.representativeQuotes().stream()
+                .map(Quote::url)
+                .filter(url -> url != null && !url.isBlank())
+                .forEach(urls::add);
+    }
+
+    private List<String> pickEvidenceUrls(List<String> urls, int start, int limit) {
+        if (urls.isEmpty()) {
+            return List.of();
+        }
+        int from = Math.min(start, urls.size() - 1);
+        int to = Math.min(urls.size(), from + limit);
+        return urls.subList(from, to);
+    }
+
+    private String renderEvidenceRefs(List<String> evidenceUrls) {
+        if (evidenceUrls == null || evidenceUrls.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < evidenceUrls.size(); i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append("[Q").append(i + 1).append(']');
+        }
+        return sb.toString();
     }
 
     private ConfidenceBreakdown buildConfidenceBreakdown(

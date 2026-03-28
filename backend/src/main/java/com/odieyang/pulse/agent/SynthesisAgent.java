@@ -1,6 +1,7 @@
 package com.odieyang.pulse.agent;
 
 import com.odieyang.pulse.model.AgentEvent;
+import com.odieyang.pulse.model.Quote;
 import com.odieyang.pulse.model.RawPosts;
 import com.odieyang.pulse.model.SentimentResult;
 import com.odieyang.pulse.service.AgentEventPublisher;
@@ -17,45 +18,33 @@ public class SynthesisAgent {
     private static final Logger log = LoggerFactory.getLogger(SynthesisAgent.class);
 
     private static final String SYSTEM_PROMPT = """
-            You are a social drama analyst.
-            Write a tightly structured report for "what people are fighting about".
+            You are a frontline social-news reporter.
+            Write a high-signal report about what people are fighting over.
 
-            Output in markdown using this exact section structure:
-
-            ## Quick Take
-            - bullet 1
-            - bullet 2
-            - bullet 3
-
-            ## Camp Battle
-            A short paragraph about support camp vs oppose camp vs neutral bystanders.
-
-            ## Controversy Heatmap
-            1. aspect and why it is controversial
-            2. aspect and why it is controversial
-            3. aspect and why it is controversial
-
+            Output markdown using exactly these six sections and this order:
+            ## Lead
+            ## Frontline Clash
+            ## Top Controversies
             ## Flip Risk Watch
-            A short paragraph about what can trigger narrative reversal.
-
-            ## Evidence Notes
-            A short paragraph about evidence limits and confidence caveats.
+            ## Why It Matters
+            ## Reporter Note
 
             Rules:
-            - Keep it factual, vivid, and grounded in the provided data.
+            - Keep every section concise, concrete, and evidence-led.
+            - Every core claim in Lead and Frontline Clash must include at least one evidence tag from the Evidence Bank, for example [Q1] [Q2].
+            - Do not use vague filler such as "overall", "many people believe", or "it sparked broad discussion" without specifics.
+            - Use only supplied evidence tags and do not invent new tags.
             - Do not include any section outside this template.
-            - Do not invent claims without evidence from provided posts.
             """;
 
     private static final String REVISION_SYSTEM_PROMPT = """
-            You are a social drama analyst revising a report based on critic feedback.
-
-            Keep the same output template and improve evidence quality.
+            You are a frontline social-news reporter revising a report based on critic feedback.
+            Keep the same six-section template and improve evidence quality.
 
             Revision priorities:
-            - remove or qualify unsupported claims
-            - fix bias and one-sided framing
-            - tighten scope to what posts actually support
+            - remove unsupported claims or add explicit qualifiers
+            - strengthen weak claims with concrete evidence tags
+            - reduce repetitive and generic phrasing
             - preserve readability and section structure
             """;
 
@@ -144,6 +133,10 @@ public class SynthesisAgent {
         }
         sb.append("\n");
 
+        sb.append("=== EVIDENCE BANK (use [Qn] tags in claims) ===\n");
+        appendEvidenceBank(sb, redditSentiment, twitterSentiment);
+        sb.append("\n");
+
         sb.append("=== REDDIT POSTS ===\n");
         appendPosts(sb, reddit);
 
@@ -162,6 +155,35 @@ public class SynthesisAgent {
         int i = 1;
         for (var post : rawPosts.posts()) {
             sb.append("[%d] %s\n%s\n\n".formatted(i++, post.title(), post.snippet()));
+        }
+    }
+
+    private void appendEvidenceBank(StringBuilder sb, SentimentResult redditSentiment, SentimentResult twitterSentiment) {
+        int[] index = {1};
+        appendQuotes(sb, redditSentiment, "Reddit", index);
+        appendQuotes(sb, twitterSentiment, "Twitter/X", index);
+        if (index[0] == 1) {
+            sb.append("No quote evidence available.\n");
+        }
+    }
+
+    private void appendQuotes(StringBuilder sb, SentimentResult sentiment, String platform, int[] index) {
+        if (sentiment == null || sentiment.representativeQuotes() == null) {
+            return;
+        }
+        for (Quote quote : sentiment.representativeQuotes()) {
+            if (quote == null || quote.text() == null || quote.text().isBlank()) {
+                continue;
+            }
+            sb.append("[Q").append(index[0]++).append("] ")
+                    .append(platform)
+                    .append(" | ")
+                    .append("camp=").append(quote.camp() == null ? "unknown" : quote.camp())
+                    .append(" | ")
+                    .append("url=").append(quote.url() == null ? "" : quote.url())
+                    .append(" | ")
+                    .append("quote=").append(quote.text())
+                    .append("\n");
         }
     }
 

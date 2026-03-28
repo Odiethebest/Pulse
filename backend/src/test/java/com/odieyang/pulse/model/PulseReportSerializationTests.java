@@ -43,7 +43,8 @@ class PulseReportSerializationTests {
                 new CampDistribution(0.48, 0.37, 0.15),
                 List.of(new ControversyTopic("Pricing", 71, "price fight")),
                 List.of(new FlipSignal("Evidence gap", 64, "weak citation chain")),
-                List.of("removed weak claim")
+                List.of("removed weak claim"),
+                List.of(new ClaimEvidenceLink("C1", "Claim text", List.of("https://reddit.com/test")))
         );
 
         JsonNode root = objectMapper.readTree(objectMapper.writeValueAsString(report));
@@ -58,6 +59,8 @@ class PulseReportSerializationTests {
         assertEquals("Pricing", root.get("controversyTopics").get(0).get("aspect").asText());
         assertEquals("Evidence gap", root.get("flipSignals").get(0).get("signal").asText());
         assertEquals("removed weak claim", root.get("revisionDelta").get(0).asText());
+        assertEquals("C1", root.get("claimEvidenceMap").get(0).get("claimId").asText());
+        assertEquals("https://reddit.com/test", root.get("claimEvidenceMap").get(0).get("evidenceUrls").get(0).asText());
         assertEquals("support", root.get("redditSentiment").get("representativeQuotes").get(0).get("camp").asText());
         assertEquals(0.8, root.get("redditSentiment").get("representativeQuotes").get(0).get("evidenceWeight").asDouble(), 0.0001);
     }
@@ -111,6 +114,7 @@ class PulseReportSerializationTests {
         assertNull(report.controversyTopics());
         assertNull(report.flipSignals());
         assertNull(report.revisionDelta());
+        assertNull(report.claimEvidenceMap());
         assertNull(report.critique().evidenceGaps());
         assertNull(report.critique().deltaHighlights());
     }

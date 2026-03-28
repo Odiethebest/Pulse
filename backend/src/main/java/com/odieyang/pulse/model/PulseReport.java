@@ -22,7 +22,8 @@ public record PulseReport(
         CampDistribution campDistribution,
         List<ControversyTopic> controversyTopics,
         List<FlipSignal> flipSignals,
-        List<String> revisionDelta
+        List<String> revisionDelta,
+        List<ClaimEvidenceLink> claimEvidenceMap
 ) {
     public PulseReport(
             String topic,
@@ -47,6 +48,7 @@ public record PulseReport(
                 confidenceScore,
                 debateTriggered,
                 executionTrace,
+                null,
                 null,
                 null,
                 null,

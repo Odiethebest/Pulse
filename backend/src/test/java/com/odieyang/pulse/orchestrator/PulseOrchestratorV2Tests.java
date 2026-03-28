@@ -87,6 +87,33 @@ class PulseOrchestratorV2Tests {
         assertTrue(report.revisionDelta().getFirst().startsWith("Need stronger evidence: "));
     }
 
+    @Test
+    void analyzeShouldFallbackToInitialSynthesisWhenRevisionFails() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new FailingRevisionSynthesisAgent(),
+                new FixedCriticAgent(45),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "confidenceThreshold", 60);
+
+        PulseReport report = orchestrator.analyze("Revision fallback topic");
+
+        assertEquals("initial synthesis", report.synthesis());
+        assertFalse(report.debateTriggered(),
+                "Should not claim revision happened when revision synthesis failed");
+        assertEquals(45, report.confidenceScore());
+        assertNotNull(report.quickTake());
+        assertFalse(report.quickTake().isEmpty());
+    }
+
     private PulseOrchestrator buildOrchestrator(
             QueryPlannerAgent queryPlannerAgent,
             RedditAgent redditAgent,
@@ -373,6 +400,33 @@ class PulseOrchestratorV2Tests {
         ) {
             revisionCalls.incrementAndGet();
             return "revised synthesis";
+        }
+    }
+
+    private static class FailingRevisionSynthesisAgent extends SynthesisAgent {
+        FailingRevisionSynthesisAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public String synthesize(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment
+        ) {
+            return "initial synthesis";
+        }
+
+        @Override
+        public String synthesize(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment,
+                String critique
+        ) {
+            throw new RuntimeException("revision synthesis failed");
         }
     }
 

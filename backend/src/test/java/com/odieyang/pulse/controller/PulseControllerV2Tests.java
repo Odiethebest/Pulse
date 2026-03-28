@@ -104,7 +104,12 @@ class PulseControllerV2Tests {
                 new CampDistribution(0.46, 0.39, 0.15),
                 List.of(new ControversyTopic("Pricing", 72, "Main fight around price fairness")),
                 List.of(new FlipSignal("Evidence gap", 64, "Claim depends on weak sources")),
-                List.of("Removed unsupported claim")
+                List.of("Removed unsupported claim"),
+                List.of(new ClaimEvidenceLink(
+                        "C1",
+                        "Support is 46% vs oppose 39%",
+                        List.of("https://reddit.com/r/test", "https://x.com/test")
+                ))
         );
     }
 
