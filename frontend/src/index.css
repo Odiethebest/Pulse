@@ -1,6 +1,28 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+:root {
+  --pulse-bg: #0f0f0f;
+  --pulse-surface: #1a1a1a;
+  --pulse-surface-2: #111111;
+  --pulse-border: #2a2a2a;
+
+  --pulse-text-primary: #e5e7eb;
+  --pulse-text-secondary: #9ca3af;
+  --pulse-text-muted: #6b7280;
+
+  --pulse-accent: #3b82f6;
+  --pulse-positive: #22c55e;
+  --pulse-negative: #ef4444;
+  --pulse-neutral: #6b7280;
+  --pulse-warning: #eab308;
+
+  --pulse-drama: #f87171;
+  --pulse-polarization: #fbbf24;
+  --pulse-heat: #60a5fa;
+  --pulse-flip-risk: #4ade80;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -8,10 +30,15 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
-  background: #0f0f0f;
-  color: #fff;
+  background: var(--pulse-bg);
+  color: var(--pulse-text-primary);
   -webkit-font-smoothing: antialiased;
 }
+
+.pulse-token-drama { color: var(--pulse-drama); }
+.pulse-token-polarization { color: var(--pulse-polarization); }
+.pulse-token-heat { color: var(--pulse-heat); }
+.pulse-token-flip { color: var(--pulse-flip-risk); }
 
 @keyframes fade-up {
   from {
