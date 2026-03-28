@@ -17,32 +17,46 @@ public class SynthesisAgent {
     private static final Logger log = LoggerFactory.getLogger(SynthesisAgent.class);
 
     private static final String SYSTEM_PROMPT = """
-            You are a public opinion analyst who synthesizes social media sentiment
-            into clear, balanced reports.
+            You are a social drama analyst.
+            Write a tightly structured report for "what people are fighting about".
 
-            Write a structured synthesis report covering:
-            1. Overall public sentiment and dominant mood
-            2. Key themes and narratives across both platforms
-            3. Notable differences between Reddit and Twitter/X audiences
-            4. Most significant controversies or points of division
-            5. Confidence caveats based on the data available
+            Output in markdown using this exact section structure:
 
-            Be factual, balanced, and grounded in the provided data.
-            Do not introduce claims that aren't supported by the posts.
-            Write in clear prose, 300-500 words.
+            ## Quick Take
+            - bullet 1
+            - bullet 2
+            - bullet 3
+
+            ## Camp Battle
+            A short paragraph about support camp vs oppose camp vs neutral bystanders.
+
+            ## Controversy Heatmap
+            1. aspect and why it is controversial
+            2. aspect and why it is controversial
+            3. aspect and why it is controversial
+
+            ## Flip Risk Watch
+            A short paragraph about what can trigger narrative reversal.
+
+            ## Evidence Notes
+            A short paragraph about evidence limits and confidence caveats.
+
+            Rules:
+            - Keep it factual, vivid, and grounded in the provided data.
+            - Do not include any section outside this template.
+            - Do not invent claims without evidence from provided posts.
             """;
 
     private static final String REVISION_SYSTEM_PROMPT = """
-            You are a public opinion analyst revising a synthesis report based on
-            critic feedback.
+            You are a social drama analyst revising a report based on critic feedback.
 
-            Incorporate the revision suggestions to address:
-            - Unsupported claims that should be removed or qualified
-            - Bias concerns that should be balanced
-            - Scope issues where the report overreaches the data
+            Keep the same output template and improve evidence quality.
 
-            Produce an improved synthesis report (300-500 words) that addresses
-            all identified issues while remaining grounded in the source data.
+            Revision priorities:
+            - remove or qualify unsupported claims
+            - fix bias and one-sided framing
+            - tighten scope to what posts actually support
+            - preserve readability and section structure
             """;
 
     private final ChatClient chatClient;
@@ -102,6 +116,16 @@ public class SynthesisAgent {
                 redditSentiment.negativeRatio() * 100,
                 redditSentiment.neutralRatio() * 100));
         sb.append("Controversies: %s\n\n".formatted(redditSentiment.mainControversies()));
+        if (redditSentiment.stanceDistribution() != null) {
+            sb.append("Stance Distribution (support/oppose/neutral): %s / %s / %s\n".formatted(
+                    pct(redditSentiment.stanceDistribution().support()),
+                    pct(redditSentiment.stanceDistribution().oppose()),
+                    pct(redditSentiment.stanceDistribution().neutral())));
+        }
+        if (redditSentiment.aspectSentiments() != null && !redditSentiment.aspectSentiments().isEmpty()) {
+            sb.append("Aspect Heatmap: %s\n".formatted(redditSentiment.aspectSentiments()));
+        }
+        sb.append("\n");
 
         sb.append("=== TWITTER/X SENTIMENT ===\n");
         sb.append("Positive: %.0f%%, Negative: %.0f%%, Neutral: %.0f%%\n".formatted(
@@ -109,6 +133,16 @@ public class SynthesisAgent {
                 twitterSentiment.negativeRatio() * 100,
                 twitterSentiment.neutralRatio() * 100));
         sb.append("Controversies: %s\n\n".formatted(twitterSentiment.mainControversies()));
+        if (twitterSentiment.stanceDistribution() != null) {
+            sb.append("Stance Distribution (support/oppose/neutral): %s / %s / %s\n".formatted(
+                    pct(twitterSentiment.stanceDistribution().support()),
+                    pct(twitterSentiment.stanceDistribution().oppose()),
+                    pct(twitterSentiment.stanceDistribution().neutral())));
+        }
+        if (twitterSentiment.aspectSentiments() != null && !twitterSentiment.aspectSentiments().isEmpty()) {
+            sb.append("Aspect Heatmap: %s\n".formatted(twitterSentiment.aspectSentiments()));
+        }
+        sb.append("\n");
 
         sb.append("=== REDDIT POSTS ===\n");
         appendPosts(sb, reddit);
@@ -129,5 +163,12 @@ public class SynthesisAgent {
         for (var post : rawPosts.posts()) {
             sb.append("[%d] %s\n%s\n\n".formatted(i++, post.title(), post.snippet()));
         }
+    }
+
+    private String pct(Double value) {
+        if (value == null) {
+            return "0%";
+        }
+        return "%.0f%%".formatted(value * 100);
     }
 }
