@@ -14,14 +14,29 @@ function arcColor(score) {
   return '#22c55e'
 }
 
-export default function ConfidenceGauge({ score = null, debateTriggered = false }) {
+function metricLabel(key) {
+  return {
+    coverage: 'Coverage',
+    diversity: 'Diversity',
+    agreement: 'Agreement',
+    evidenceSupport: 'Evidence',
+    stability: 'Stability',
+  }[key] || key
+}
+
+export default function ConfidenceGauge({ score = null, debateTriggered = false, breakdown = null }) {
   const [animScore, setAnimScore] = useState(0)
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     setAnimScore(0)
     const t = setTimeout(() => setAnimScore(score ?? 0), 50)
     return () => clearTimeout(t)
   }, [score])
+
+  const breakdownEntries = breakdown
+    ? Object.entries(breakdown).filter(([, value]) => typeof value === 'number')
+    : []
 
   const offset = ARC_LEN * (1 - animScore / 100)
   const color  = arcColor(score ?? 0)
@@ -84,6 +99,28 @@ export default function ConfidenceGauge({ score = null, debateTriggered = false 
         <span className="text-xs text-[#eab308] border border-[#eab308]/30 bg-[#eab308]/5 rounded-full px-3 py-1 leading-none">
           🔄 Revised after critic review
         </span>
+      )}
+
+      {breakdownEntries.length > 0 && (
+        <div className="w-full max-w-[220px]">
+          <button
+            onClick={() => setOpen(v => !v)}
+            className="w-full text-left text-xs text-[#9ca3af] hover:text-[#cbd5e1] transition-colors border border-[#2a2a2a] rounded-lg px-3 py-2"
+          >
+            Score Breakdown
+          </button>
+
+          {open && (
+            <div className="mt-2 border border-[#2a2a2a] rounded-lg p-2.5 bg-[#111111] space-y-1.5">
+              {breakdownEntries.map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between text-xs">
+                  <span className="text-[#6b7280]">{metricLabel(key)}</span>
+                  <span className="text-[#d1d5db] font-medium">{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
