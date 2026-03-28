@@ -50,24 +50,26 @@ export default function App() {
         <div className="pulse-content flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8">
 
           {/* AgentGraph — stable render, no animation to avoid replay on state transitions */}
-          <div className="drama-module">
-            <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-3 font-medium">
-              Agent Execution
-            </p>
-            <AgentGraph key={runId} agentEvents={agentEvents} runStatus={status} />
+          <div className="drama-module grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6">
+            <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
+              <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-3 font-medium">
+                Agent Execution
+              </p>
+              <AgentGraph key={runId} agentEvents={agentEvents} runStatus={status} />
+            </div>
+
+            <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
+              <LiveOutput liveText={liveText} isLoading={isLoading} />
+            </div>
           </div>
 
-          {/* ConfidenceGauge + LiveOutput row — appears on loading */}
-          <div className="drama-module animate-fade-up flex flex-col sm:flex-row gap-4 md:gap-6" style={{ animationDelay: '100ms' }}>
+          <div className="drama-module animate-fade-up" style={{ animationDelay: '100ms' }}>
             <DramaScoreboard
               metrics={metrics}
               confidenceScore={report?.confidenceScore ?? null}
               debateTriggered={report?.debateTriggered ?? false}
               confidenceBreakdown={report?.confidenceBreakdown ?? null}
             />
-            <div className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4 min-w-0">
-              <LiveOutput liveText={liveText} isLoading={isLoading} />
-            </div>
           </div>
 
           {(quickTake.length > 0 || isLoading) && (

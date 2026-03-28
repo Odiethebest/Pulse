@@ -24,9 +24,15 @@ function metricLabel(key) {
   }[key] || key
 }
 
+function scoreState(score) {
+  if (score === null) return { label: 'Pending', color: 'text-[#9ca3af]' }
+  if (score < 40) return { label: 'Low', color: 'text-[#ef4444]' }
+  if (score < 70) return { label: 'Medium', color: 'text-[#eab308]' }
+  return { label: 'High', color: 'text-[#22c55e]' }
+}
+
 export default function ConfidenceGauge({ score = null, debateTriggered = false, breakdown = null }) {
   const [animScore, setAnimScore] = useState(0)
-  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     setAnimScore(0)
@@ -41,9 +47,10 @@ export default function ConfidenceGauge({ score = null, debateTriggered = false,
   const offset = ARC_LEN * (1 - animScore / 100)
   const color  = arcColor(score ?? 0)
   const label  = score !== null ? String(score) : '--'
+  const state = scoreState(score)
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-2.5">
       <svg width={160} height={108} viewBox="0 0 160 108">
         {/* Track arc */}
         <path
@@ -95,31 +102,22 @@ export default function ConfidenceGauge({ score = null, debateTriggered = false,
         </text>
       </svg>
 
+      <div className={`text-xs font-semibold ${state.color}`}>{state.label}</div>
+
       {debateTriggered && (
-        <span className="text-xs text-[#eab308] border border-[#eab308]/30 bg-[#eab308]/5 rounded-full px-3 py-1 leading-none">
-          🔄 Revised after critic review
+        <span className="text-[11px] text-[#eab308] border border-[#eab308]/30 bg-[#eab308]/5 rounded-full px-2.5 py-1 leading-none">
+          Revised after critic review
         </span>
       )}
 
       {breakdownEntries.length > 0 && (
-        <div className="w-full max-w-[220px]">
-          <button
-            onClick={() => setOpen(v => !v)}
-            className="w-full text-left text-xs text-[#9ca3af] hover:text-[#cbd5e1] transition-colors border border-[#2a2a2a] rounded-lg px-3 py-2"
-          >
-            Score Breakdown
-          </button>
-
-          {open && (
-            <div className="mt-2 border border-[#2a2a2a] rounded-lg p-2.5 bg-[#111111] space-y-1.5">
-              {breakdownEntries.map(([key, value]) => (
-                <div key={key} className="flex items-center justify-between text-xs">
-                  <span className="text-[#6b7280]">{metricLabel(key)}</span>
-                  <span className="text-[#d1d5db] font-medium">{value}</span>
-                </div>
-              ))}
+        <div className="w-full max-w-[220px] border border-[#2a2a2a] rounded-lg p-2.5 bg-[#111111] space-y-1.5">
+          {breakdownEntries.map(([key, value]) => (
+            <div key={key} className="flex items-center justify-between text-xs gap-2">
+              <span className="text-[#6b7280]">{metricLabel(key)}</span>
+              <span className="text-[#d1d5db] font-medium">{value}</span>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>

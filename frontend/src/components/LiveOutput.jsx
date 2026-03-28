@@ -13,6 +13,9 @@ function parseLine(raw) {
 export default function LiveOutput({ liveText = '', isLoading = false }) {
   const scrollRef = useRef(null)
   const lines = liveText ? liveText.split('\n').filter(Boolean) : []
+  const completed = lines.filter((line) => line.startsWith('[COMPLETED]')).length
+  const running = lines.filter((line) => line.startsWith('[STARTED]')).length - completed
+  const failed = lines.filter((line) => line.startsWith('[FAILED]')).length
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -25,10 +28,21 @@ export default function LiveOutput({ liveText = '', isLoading = false }) {
       <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
         Agent Log
       </p>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <span className="text-[11px] text-[#9ca3af] border border-[#2a2a2a] rounded-full px-2 py-0.5">
+          Running {Math.max(0, running)}
+        </span>
+        <span className="text-[11px] text-[#86efac] border border-[#14532d]/50 bg-[#14532d]/20 rounded-full px-2 py-0.5">
+          Completed {completed}
+        </span>
+        <span className="text-[11px] text-[#fca5a5] border border-[#7f1d1d]/50 bg-[#7f1d1d]/20 rounded-full px-2 py-0.5">
+          Failed {failed}
+        </span>
+      </div>
 
       <div
         ref={scrollRef}
-        className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl p-4 h-[180px] overflow-y-auto"
+        className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl p-4 h-[300px] overflow-y-auto"
         style={{ fontFamily: 'ui-monospace, Consolas, monospace' }}
       >
         {lines.length === 0 && (
