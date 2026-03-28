@@ -1,32 +1,43 @@
-# CLAUDE.md — Pulse
+# CLAUDE.md — Pulse Backend (Current State)
 
-## Project Overview
+This document reflects the current backend implementation under `backend/`.
 
-Pulse is a multi-agent public opinion analysis system built with Spring Boot 3.4 + Spring AI 1.0. Users input a topic or event; the system dispatches specialized agents to fetch, analyze, debate, and synthesize public sentiment from Reddit and Twitter/X.
+## 1. Scope
 
-**Key architectural pattern:** Critic-Synthesis debate loop — the Synthesis agent produces an initial report, the Critic agent evaluates it for bias and confidence, and if confidence < 60 a second synthesis round is triggered with correction guidance.
+- Service type: Spring Boot API + SSE + static frontend hosting.
+- Core capability: multi-agent sentiment synthesis for a topic across Reddit and Twitter/X.
+- Source-of-truth code root: `backend/src/main/java/com/odieyang/pulse`.
 
----
+## 2. Tech Stack
 
-## Tech Stack
+- Java 21
+- Spring Boot 3.4.4
+- Spring AI 1.0.0 (`ChatClient` + OpenAI model)
+- Spring Web + WebFlux (SSE streaming)
+- Reactor `Sinks.Many` for in-process event fan-out
+- Maven build with frontend bundling integration
 
-- **Java 21**, Spring Boot 3.4.4, Spring AI 1.0.0
-- **LLM:** OpenAI GPT-4o-mini via Spring AI `ChatClient`
-- **Web search:** Tavily Search API (called via plain HTTP, no SDK)
-- **Streaming:** Spring WebFlux SSE using Reactor `Sinks.Many`
-- **Build:** Maven
+## 3. Runtime Architecture
 
----
+Pipeline entrypoint is `PulseOrchestrator#analyze(String topic)`.
 
-## Project Structure
+Execution stages:
 
-```
-src/main/java/com/odieyang/pulse/
-├── PulseApplication.java
-├── controller/
-│   └── PulseController.java        # POST /pulse/analyze, GET /pulse/stream
-├── orchestrator/
-│   └── PulseOrchestrator.java      # coordinates all agents, owns debate loop
+1. `QueryPlannerAgent` builds Reddit/Twitter query sets + topic summary.
+2. `RedditAgent` and `TwitterAgent` fetch posts in parallel using Tavily.
+3. `SentimentAgent` runs in parallel per platform.
+4. `SynthesisAgent` creates first synthesis report.
+5. `CriticAgent` critiques report and emits confidence score.
+6. If `confidenceScore < debate.confidence.threshold` (default 60), `SynthesisAgent` runs one revision pass with critic suggestions.
+7. Orchestrator assembles `PulseReport` with full trace.
+
+All stages emit `AgentEvent` (`STARTED`, `COMPLETED`, `FAILED`) through `AgentEventPublisher`.
+
+## 4. Package Map (Actual Files)
+
+```text
+backend/src/main/java/com/odieyang/pulse/
+├── PublicOpinionAnalysisSystemApplication.java
 ├── agent/
 │   ├── QueryPlannerAgent.java
 │   ├── RedditAgent.java
@@ -34,287 +45,107 @@ src/main/java/com/odieyang/pulse/
 │   ├── SentimentAgent.java
 │   ├── SynthesisAgent.java
 │   └── CriticAgent.java
+├── config/
+│   ├── AiConfig.java
+│   ├── CorsConfig.java
+│   └── SpaFallbackFilter.java
+├── controller/
+│   ├── PulseController.java
+│   └── ApiHealthController.java
 ├── model/
+│   ├── AgentEvent.java
+│   ├── CriticResult.java
 │   ├── PulseReport.java
 │   ├── QueryPlan.java
-│   ├── RawPosts.java
-│   ├── SentimentResult.java
 │   ├── Quote.java
-│   ├── CriticResult.java
-│   └── AgentEvent.java
-├── service/
-│   ├── TavilySearchService.java    # HTTP client wrapper for Tavily API
-│   └── AgentEventPublisher.java    # Reactor Sinks SSE publisher
-└── config/
-    └── AiConfig.java               # ChatClient bean configuration
+│   ├── RawPost.java
+│   ├── RawPosts.java
+│   └── SentimentResult.java
+├── orchestrator/
+│   └── PulseOrchestrator.java
+└── service/
+    ├── AgentEventPublisher.java
+    └── TavilySearchService.java
 ```
 
----
+## 5. HTTP + SSE Contract
 
-## Data Flow
+Primary API paths:
 
-```
-POST /pulse/analyze { topic }
-        │
-        ▼
-PulseOrchestrator.analyze(topic)
-        │
-        ├─ QueryPlannerAgent.plan(topic) → QueryPlan
-        │
-        ├─ [parallel] RedditAgent.fetch(queries) → RawPosts
-        ├─ [parallel] TwitterAgent.fetch(queries) → RawPosts
-        │
-        ├─ [parallel] SentimentAgent.analyze(redditPosts) → SentimentResult
-        ├─ [parallel] SentimentAgent.analyze(twitterPosts) → SentimentResult
-        │
-        ├─ SynthesisAgent.synthesize(reddit, twitter) → String
-        │
-        ├─ CriticAgent.critique(synthesis, reddit, twitter) → CriticResult
-        │
-        ├─ if CriticResult.confidenceScore < 60:
-        │       SynthesisAgent.synthesize(reddit, twitter, critique) → String
-        │
-        └─ return PulseReport
-```
+- `POST /api/pulse/analyze`
+- `GET /api/pulse/stream`
+- `GET /api/actuator/health`
 
-All agents publish `AgentEvent(STARTED)` and `AgentEvent(COMPLETED)` via `AgentEventPublisher` at the start and end of execution.
+Legacy compatibility paths still accepted:
 
----
+- `POST /pulse/analyze`
+- `GET /pulse/stream`
 
-## Key Data Models
+Notes:
 
-```java
-record PulseReport(
-    String topic,
-    String topicSummary,
-    SentimentResult redditSentiment,
-    SentimentResult twitterSentiment,
-    String platformDiff,
-    String synthesis,
-    CriticResult critique,
-    int confidenceScore,
-    boolean debateTriggered,
-    List<AgentEvent> executionTrace
-)
+- `/api/actuator/health` is a wrapper endpoint from `ApiHealthController`.
+- SSE endpoint emits JSON-serialized `AgentEvent`.
 
-record SentimentResult(
-    String platform,
-    double positiveRatio,
-    double negativeRatio,
-    double neutralRatio,
-    List<String> mainControversies,
-    List<Quote> representativeQuotes
-)
+## 6. Configuration
 
-record CriticResult(
-    List<String> unsupportedClaims,
-    List<String> biasConcerns,
-    boolean exceedsDataScope,
-    int confidenceScore,           // 0-100, triggers round 2 if < 60
-    String revisionSuggestions
-)
+Runtime properties in `backend/src/main/resources/application.properties`.
 
-record AgentEvent(
-    String agentName,
-    String status,                 // STARTED | COMPLETED | FAILED
-    String summary,
-    long durationMs,
-    Instant timestamp
-)
+Required env vars:
 
-record QueryPlan(
-    List<String> redditQueries,
-    List<String> twitterQueries,
-    String topicSummary
-)
+- `OPENAI_API_KEY`
+- `TAVILY_API_KEY`
 
-record RawPosts(
-    String platform,
-    List<RawPost> posts
-)
+Optional env vars/properties:
 
-record RawPost(
-    String title,
-    String snippet,
-    String url
-)
+- `CORS_ALLOWED_ORIGINS` (comma-separated)
+- `debate.confidence.threshold` (default `60`)
 
-record Quote(
-    String text,
-    String url,
-    String sentiment
-)
-```
+Default OpenAI model:
 
----
+- `spring.ai.openai.chat.options.model=gpt-4o-mini`
 
-## Agent Implementation Guidelines
+## 7. Tavily Integration
 
-### All agents follow this pattern
+`TavilySearchService` uses `RestClient` to call:
 
-```java
-@Component
-@RequiredArgsConstructor
-public class XxxAgent {
+- `POST https://api.tavily.com/search`
 
-    private final ChatClient chatClient;
-    private final AgentEventPublisher publisher;
+Request shape:
 
-    public Result doWork(Input input) {
-        publisher.publish(AgentEvent.started("XxxAgent", inputSummary));
-        long start = System.currentTimeMillis();
+- `api_key`
+- `query`
+- `include_domains` (`reddit.com` or `twitter.com`/`x.com`)
+- `max_results=5`
 
-        // call chatClient here
+Empty/invalid Tavily payloads degrade to an empty list.
 
-        publisher.publish(AgentEvent.completed("XxxAgent", summary, System.currentTimeMillis() - start));
-        return result;
-    }
-}
-```
+## 8. Event Streaming Semantics
 
-### ChatClient usage
+- `AgentEventPublisher` uses `Sinks.many().multicast().onBackpressureBuffer()`.
+- `PulseController#stream()` returns `publisher.stream()` as SSE.
+- `PulseOrchestrator` subscribes to publisher stream per request and captures events into `executionTrace`.
 
-Always use structured output where possible:
+Implementation caveat:
 
-```java
-SomeRecord result = chatClient.prompt()
-    .system(SYSTEM_PROMPT)
-    .user(userPrompt)
-    .call()
-    .entity(SomeRecord.class);
-```
+- Stream is global in-process broadcast, not per-request isolated channel.
 
-For free-form text output:
+## 9. Frontend Hosting in Backend
 
-```java
-String result = chatClient.prompt()
-    .system(SYSTEM_PROMPT)
-    .user(userPrompt)
-    .call()
-    .content();
-```
+- Maven `prepare-package` installs Node `v22.12.0` + npm `10.8.2`.
+- Runs frontend `npm install` and `npm run build`.
+- Copies `frontend/dist` to backend output static directory.
+- `SpaFallbackFilter` forwards non-API HTML GET routes to `/index.html`.
 
-### Prompts
+Result: one Spring Boot jar can serve API + frontend.
 
-- Define prompts as `private static final String` constants at the top of each agent class
-- System prompts define the agent's role and output format
-- User prompts inject runtime data
-- Always specify JSON output format explicitly when using structured output
+## 10. Testing Status
 
----
+Current automated tests:
 
-## TavilySearchService
+- `PublicOpinionAnalysisSystemApplicationTests#contextLoads` only.
 
-Tavily is called via plain HTTP POST, not a Spring AI integration. The service wraps the Tavily `/search` endpoint:
+Recommended next tests:
 
-```
-POST https://api.tavily.com/search
-{
-  "api_key": "${TAVILY_API_KEY}",
-  "query": "...",
-  "include_domains": ["reddit.com"],   // or ["twitter.com", "x.com"]
-  "max_results": 5
-}
-```
-
-Use `RestClient` (Spring 6) for the HTTP call. Return a list of `RawPost` records.
-
----
-
-## AgentEventPublisher
-
-```java
-@Component
-public class AgentEventPublisher {
-
-    private final Sinks.Many<AgentEvent> sink =
-        Sinks.many().multicast().onBackpressureBuffer();
-
-    public void publish(AgentEvent event) {
-        sink.tryEmitNext(event);
-    }
-
-    public Flux<AgentEvent> stream() {
-        return sink.asFlux();
-    }
-}
-```
-
----
-
-## PulseOrchestrator
-
-Parallel execution pattern using `CompletableFuture`:
-
-```java
-// Parallel fetch
-CompletableFuture<RawPosts> redditFuture =
-    CompletableFuture.supplyAsync(() -> redditAgent.fetch(plan.redditQueries()));
-CompletableFuture<RawPosts> twitterFuture =
-    CompletableFuture.supplyAsync(() -> twitterAgent.fetch(plan.twitterQueries()));
-
-RawPosts reddit = redditFuture.join();
-RawPosts twitter = twitterFuture.join();
-```
-
-Same pattern for parallel SentimentAgent calls.
-
----
-
-## API Endpoints
-
-```
-POST /pulse/analyze
-Body: { "topic": "string" }
-Response: PulseReport (JSON)
-
-GET /pulse/stream
-Response: text/event-stream of AgentEvent
-```
-
-CORS is configured to allow `http://localhost:5173` for frontend development.
-
----
-
-## Configuration
-
-`application.properties`:
-
-```properties
-spring.application.name=pulse
-spring.ai.openai.api-key=${OPENAI_API_KEY}
-spring.ai.openai.chat.options.model=gpt-4o-mini
-tavily.api-key=${TAVILY_API_KEY}
-management.endpoints.web.exposure.include=health,info
-debate.confidence.threshold=60
-```
-
-All secrets loaded from environment variables. Never hardcode API keys.
-
----
-
-## Implementation Order
-
-Build in this sequence — each step is independently testable:
-
-1. `AiConfig.java` — ChatClient bean
-2. `AgentEventPublisher.java` — SSE sink
-3. `TavilySearchService.java` — test with a hardcoded query first
-4. `QueryPlannerAgent.java` — test with a few topics, verify QueryPlan output
-5. `RedditAgent.java` + `TwitterAgent.java` — verify raw posts are returned
-6. `SentimentAgent.java` — verify sentiment ratios and quotes look reasonable
-7. `SynthesisAgent.java` — verify report reads well
-8. `CriticAgent.java` — verify confidence scores are meaningful
-9. `PulseOrchestrator.java` — wire everything together, test debate loop
-10. `PulseController.java` — expose endpoints, test SSE stream
-
----
-
-## What NOT To Do
-
-- Do not add Spring Security — unnecessary complexity for a demo project
-- Do not use `@Transactional` or any database — this is a stateless pipeline
-- Do not catch and swallow exceptions silently — always log and rethrow or return a failed AgentEvent
-- Do not call agents sequentially when they can run in parallel
-- Do not hardcode API keys anywhere in source code
-- Do not use `Thread.sleep()` for any purpose
+- Controller contract tests (`/api/pulse/analyze`, `/api/pulse/stream`)
+- Orchestrator unit tests (with mocked agents)
+- Model serialization tests for API/SSE payload stability
