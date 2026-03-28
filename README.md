@@ -39,30 +39,66 @@ Compatibility routes are still available.
 3. OpenAI API key
 4. Tavily API key
 
-## Local Setup
+## Start the Project
 
-Create backend environment file from repository root.
+Run these two commands in separate terminals after setup is complete.
 
-```bash
-cp backend/.env.example backend/.env
-```
-
-Add your keys to `backend/.env`.
-
-Install frontend dependencies.
-
-```bash
-npm --prefix frontend install
-```
-
-Start backend service.
+Terminal A
 
 ```bash
 cd backend
 ./mvnw spring-boot:run
 ```
 
-Start frontend service in another terminal.
+Terminal B
+
+```bash
+cd frontend
+npm run dev
+```
+
+## Local Setup
+
+1. Prepare backend environment file.
+
+```bash
+cd backend
+cp .env.example .env
+cd ..
+```
+
+Run this command only the first time.
+Then open `backend/.env` and add your API keys.
+
+2. Install frontend dependencies.
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+If you want to apply npm security fixes, run the command in `frontend`.
+
+```bash
+cd frontend
+npm audit fix
+cd ..
+```
+
+3. Start backend service in Terminal A.
+
+```bash
+cd backend
+./mvnw spring-boot:run
+```
+
+Keep Terminal A running after the command starts the server.
+Do not run any other command in Terminal A.
+
+4. Start frontend service in Terminal B.
+
+Open a new terminal window first.
 
 ```bash
 cd frontend
@@ -75,43 +111,56 @@ npm run dev
 2. Backend `http://localhost:8080`
 3. Frontend uses `/api` and Vite forwards requests to backend
 
+## Troubleshooting
+
+If you see this Maven error, the command was typed incorrectly.
+
+`Could not find goal 'runcd'`
+
+Use the exact command below.
+
+```bash
+cd backend
+./mvnw spring-boot:run
+```
+
 ## Production Build
 
-Build backend package.
+1. Build backend package.
 
 ```bash
 cd backend
 ./mvnw clean package
+cd ..
 ```
 
-Run packaged service from repository root.
+2. Run packaged service.
 
 ```bash
-java -jar backend/target/pulse-*.jar
+cd backend/target
+java -jar pulse-*.jar
 ```
 
 The backend build process also builds frontend assets and serves them as static content.
 
 ## Smoke Checks
 
-Health check.
+1. Health check.
 
 ```bash
-curl http://localhost:8080/api/actuator/health
+curl -sS http://localhost:8080/api/actuator/health
 ```
 
-Analyze request.
+2. Analyze request.
 
 ```bash
-curl http://localhost:8080/api/pulse/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"topic":"OpenAI releases GPT-5"}'
+curl -sS -X POST http://localhost:8080/api/pulse/analyze -H "Content-Type: application/json" -d '{"topic":"OpenAI releases GPT-5"}'
 ```
 
-Live stream.
+3. Live stream.
 
 ```bash
-curl http://localhost:8080/api/pulse/stream
+curl -N http://localhost:8080/api/pulse/stream
 ```
 
 ## Documentation

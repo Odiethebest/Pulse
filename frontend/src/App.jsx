@@ -43,7 +43,7 @@ export default function App() {
             <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-3 font-medium">
               Agent Execution
             </p>
-            <AgentGraph agentEvents={agentEvents} />
+            <AgentGraph agentEvents={agentEvents} runStatus={status} />
           </div>
 
           {/* ConfidenceGauge + LiveOutput row — appears on loading */}

@@ -4,19 +4,27 @@ import '@xyflow/react/dist/style.css'
 
 // --- agent name → node id resolution ---
 const MATCH = {
-  queryPlanner:     (n) => /queryplanner/i.test(n),
-  reddit:           (n) => /reddit/i.test(n) && !/sentiment/i.test(n),
-  twitter:          (n) => /twitter/i.test(n) && !/sentiment/i.test(n),
-  sentimentReddit:  (n) => /sentiment/i.test(n) && /reddit/i.test(n),
-  sentimentTwitter: (n) => /sentiment/i.test(n) && /twitter/i.test(n),
-  synthesis:        (n) => /synthesis/i.test(n),
-  critic:           (n) => /critic/i.test(n),
-  final:            (n) => /final/i.test(n),
+  queryPlanner:     (e) => /queryplanner/i.test(e.agentName),
+  reddit:           (e) => /reddit/i.test(e.agentName) && !/sentiment/i.test(e.agentName),
+  twitter:          (e) => /twitter/i.test(e.agentName) && !/sentiment/i.test(e.agentName),
+  sentimentReddit:  (e) =>
+    /sentiment/i.test(e.agentName) && /reddit/i.test(e.summary || ''),
+  sentimentTwitter: (e) =>
+    /sentiment/i.test(e.agentName) && /twitter/i.test(e.summary || ''),
+  synthesis:        (e) => /synthesis/i.test(e.agentName),
+  critic:           (e) => /critic/i.test(e.agentName),
 }
 
-function resolveState(id, events) {
+function resolveState(id, events, runStatus) {
+  if (id === 'final') {
+    if (runStatus === 'complete') return 'complete'
+    if (runStatus === 'error') return 'failed'
+    if (runStatus === 'loading' && events.length > 0) return 'running'
+    return 'idle'
+  }
+
   const m = MATCH[id]
-  const evts = events.filter(e => m(e.agentName))
+  const evts = events.filter(m)
   if (evts.some(e => e.status === 'FAILED'))    return 'failed'
   if (evts.some(e => e.status === 'COMPLETED')) return 'complete'
   if (evts.some(e => e.status === 'STARTED'))   return 'running'
@@ -24,8 +32,9 @@ function resolveState(id, events) {
 }
 
 function resolveDuration(id, events) {
+  if (id === 'final') return null
   const m = MATCH[id]
-  return events.find(e => m(e.agentName) && e.status === 'COMPLETED')?.durationMs ?? null
+  return events.find(e => m(e) && e.status === 'COMPLETED')?.durationMs ?? null
 }
 
 // --- static layout ---
@@ -163,7 +172,7 @@ function StatusIcon({ state }) {
 
 const nodeTypes = { agentNode: AgentNode }
 
-export default function AgentGraph({ agentEvents = [] }) {
+export default function AgentGraph({ agentEvents = [], runStatus = 'idle' }) {
   const nodes = useMemo(() =>
     STATIC_NODES.map(({ id, label, x, y }) => ({
       id,
@@ -171,19 +180,19 @@ export default function AgentGraph({ agentEvents = [] }) {
       position: { x, y },
       data: {
         label,
-        state: resolveState(id, agentEvents),
+        state: resolveState(id, agentEvents, runStatus),
         duration: resolveDuration(id, agentEvents),
       },
       draggable: false,
       selectable: false,
       connectable: false,
     })),
-    [agentEvents]
+    [agentEvents, runStatus]
   )
 
   const edges = useMemo(() =>
     STATIC_EDGES.map(({ id, source, target }) => {
-      const srcState = resolveState(source, agentEvents)
+      const srcState = resolveState(source, agentEvents, runStatus)
       const stroke =
         srcState === 'complete' ? '#22c55e' :
         srcState === 'running'  ? '#3b82f6' :
@@ -196,7 +205,7 @@ export default function AgentGraph({ agentEvents = [] }) {
         style: { stroke, strokeWidth: 1.5 },
       }
     }),
-    [agentEvents]
+    [agentEvents, runStatus]
   )
 
   return (
