@@ -1,83 +1,139 @@
-import ConfidenceGauge from './ConfidenceGauge'
-import ConfidenceRadar from './ConfidenceRadar'
 import {
+  PolarAngleAxis,
+  PolarGrid,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts'
+import {
+  buildSnapshotReadout,
   clampScore,
   CONFIDENCE_MAP,
   getConfidenceBand,
-  getMetricLevel,
-  METRIC_META,
   metricLabel,
   normalizeMetrics,
-  buildSnapshotReadout,
 } from '../lib/metricSemantics'
 
-function MetricCard({ metricKey, value }) {
-  const meta = METRIC_META[metricKey]
-  const level = getMetricLevel(metricKey, value)
-  const tones = {
-    blue: 'text-[#60a5fa] border-[#1d4ed8]/40 bg-[#1d4ed8]/10',
-    red: 'text-[#f87171] border-[#7f1d1d]/40 bg-[#7f1d1d]/10',
-    amber: 'text-[#fbbf24] border-[#78350f]/40 bg-[#78350f]/10',
-    green: 'text-[#4ade80] border-[#14532d]/40 bg-[#14532d]/10',
+function confidenceStatus(score) {
+  if (score === null) {
+    return {
+      label: 'Pending',
+      tone: 'text-[#9ca3af] border-[#2a2a2a] bg-[#111111]',
+    }
   }
+  if (score < 40) {
+    return {
+      label: 'Low',
+      tone: 'text-[#fca5a5] border-[#7f1d1d]/60 bg-[#7f1d1d]/20',
+    }
+  }
+  if (score < 70) {
+    return {
+      label: 'Medium',
+      tone: 'text-[#fde68a] border-[#78350f]/60 bg-[#78350f]/20',
+    }
+  }
+  return {
+    label: 'High',
+    tone: 'text-[#67e8f9] border-[#0e7490]/60 bg-[#0e7490]/20',
+  }
+}
 
+function metricTone(value) {
+  if (value === null) {
+    return {
+      text: 'text-[#9ca3af]',
+      bar: 'bg-[#4b5563]',
+      chip: 'bg-[#111827]',
+      border: 'border-[#2a2a2a]',
+    }
+  }
+  if (value >= 80) {
+    return {
+      text: 'text-[#67e8f9]',
+      bar: 'bg-[#06b6d4]',
+      border: 'border-[#0e7490]/60',
+    }
+  }
+  if (value >= 50) {
+    return {
+      text: 'text-[#fde68a]',
+      bar: 'bg-[#eab308]',
+      border: 'border-[#a16207]/60',
+    }
+  }
+  return {
+    text: 'text-[#fdba74]',
+    bar: 'bg-[#f97316]',
+    border: 'border-[#9a3412]/60',
+  }
+}
+
+function radarRows(breakdown) {
+  return [
+    { name: 'Coverage', value: clampScore(breakdown?.coverage) ?? 0 },
+    { name: 'Diversity', value: clampScore(breakdown?.diversity) ?? 0 },
+    { name: 'Agreement', value: clampScore(breakdown?.agreement) ?? 0 },
+    { name: 'Stability', value: clampScore(breakdown?.stability) ?? 0 },
+    { name: 'Evidence', value: clampScore(breakdown?.evidenceSupport) ?? 0 },
+  ]
+}
+
+function detailRows(breakdown, metrics) {
+  return CONFIDENCE_MAP.map((row) => {
+    const value = clampScore(breakdown?.[row.key])
+    return {
+      name: row.label === 'Evidence Support' ? 'Evidence' : row.label,
+      value,
+      tags: row.drivers.map((driver) => `${metricLabel(driver)} ${clampScore(metrics?.[driver]) ?? '--'}`),
+      desc: row.summary,
+    }
+  })
+}
+
+function RadarTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload
   return (
-    <div className="border border-[#2a2a2a] rounded-lg p-3 bg-[#111111]">
-      <p className="text-[11px] uppercase tracking-widest text-[#6b7280] mb-1">{meta.label}</p>
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className={`text-lg font-semibold px-2 py-0.5 rounded-md border ${tones[meta.tone]}`}>
-          {value ?? '--'}
-        </span>
-        <span className="text-[11px] text-[#9ca3af]">{level.tag}</span>
-      </div>
-      <p className="text-xs text-[#6b7280] leading-relaxed mb-1">{meta.guide}</p>
-      <p className="text-xs text-[#9ca3af] leading-relaxed">{level.meaning}</p>
+    <div className="bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-2.5 py-1.5 shadow-xl">
+      <p className="text-xs text-[#9ca3af]">{row?.name}</p>
+      <p className="text-sm text-[#d1d5db] font-semibold mt-0.5">{row?.value ?? '--'}</p>
     </div>
   )
 }
 
-function SnapshotChip({ metricKey, value }) {
-  const score = clampScore(value)
-  const tone = score === null
-    ? 'text-[#9ca3af] border-[#2a2a2a] bg-[#111111]'
-    : score >= 70
-      ? 'text-[#fca5a5] border-[#7f1d1d]/50 bg-[#7f1d1d]/20'
-      : score >= 40
-        ? 'text-[#fde68a] border-[#78350f]/50 bg-[#78350f]/20'
-        : 'text-[#86efac] border-[#14532d]/50 bg-[#14532d]/20'
-  return (
-    <span className={`text-[11px] px-2 py-0.5 rounded-full border ${tone}`}>
-      {metricLabel(metricKey)} {score ?? '--'}
-    </span>
-  )
-}
+function DetailCard({ row }) {
+  const tone = metricTone(row.value)
+  const width = row.value ?? 0
+  const slug = row.name.toLowerCase()
 
-function MappingRow({ row, breakdown, metrics }) {
-  const score = clampScore(breakdown?.[row.key])
   return (
-    <div className="border border-[#2a2a2a] rounded-lg p-3 bg-[#111111]">
+    <div
+      data-testid={`metric-card-${slug}`}
+      className={`bg-zinc-900 border rounded-xl p-3.5 transition-colors hover:bg-zinc-800/70 ${tone.border}`}
+    >
       <div className="flex items-center justify-between gap-2 mb-2">
-        <p className="text-sm text-[#d1d5db] font-medium">{row.label}</p>
-        <span className="text-xs text-[#60a5fa] font-semibold">{score ?? '--'}</span>
+        <p className={`text-sm font-medium ${tone.text}`}>{row.name}</p>
+        <p className={`text-sm font-semibold ${tone.text}`}>{row.value ?? '--'}</p>
       </div>
 
-      <div className="w-full h-1.5 rounded-full bg-[#2a2a2a] overflow-hidden mb-2">
-        <div
-          className="h-full bg-[#3b82f6]"
-          style={{ width: `${score ?? 0}%` }}
-        />
+      <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-2.5">
+        <div className={`h-full ${tone.bar}`} style={{ width: `${width}%` }} />
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-1.5">
-        {row.drivers.map((metricKey) => (
-          <SnapshotChip
-            key={`${row.key}-${metricKey}`}
-            metricKey={metricKey}
-            value={metrics?.[metricKey]}
-          />
+      <div className="flex flex-wrap gap-1.5 mb-2.5">
+        {row.tags.map((tag, idx) => (
+          <span
+            key={`${row.name}-tag-${idx}`}
+            className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700"
+          >
+            {tag}
+          </span>
         ))}
       </div>
-      <p className="text-xs text-[#6b7280] leading-relaxed">{row.summary}</p>
+
+      <p className="text-xs text-zinc-400 leading-relaxed">{row.desc}</p>
     </div>
   )
 }
@@ -89,21 +145,28 @@ export default function DramaScoreboard({
   confidenceBreakdown,
 }) {
   const normalizedMetrics = normalizeMetrics(metrics)
-  const confidence = clampScore(confidenceScore)
-  const confidenceInfo = getConfidenceBand(confidence)
-  const readout = buildSnapshotReadout(normalizedMetrics, confidence)
+  const score = clampScore(confidenceScore)
+  const band = getConfidenceBand(score)
+  const status = confidenceStatus(score)
+  const radarData = radarRows(confidenceBreakdown)
+  const cards = detailRows(confidenceBreakdown, normalizedMetrics)
+  const snapshotLines = buildSnapshotReadout(normalizedMetrics, score)
+  const strongestCard = [...cards]
+    .filter((row) => row.value !== null)
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))[0]
+  const weakestCard = [...cards]
+    .filter((row) => row.value !== null)
+    .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0]
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4 md:p-5">
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-2 mb-4">
+    <section
+      aria-label="confidence-profile-dashboard"
+      className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-4 md:p-5"
+    >
+      <div className="flex items-center justify-between gap-2 mb-4">
         <div>
-          <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-1 font-medium">
-            Signal Dashboard
-          </p>
-          <h3 className="text-white text-lg font-semibold leading-tight">Snapshot and Confidence Map</h3>
-          <p className="text-sm text-[#9ca3af] mt-1">
-            Read snapshot metrics first, then verify how each metric affects confidence dimensions.
-          </p>
+          <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-1 font-medium">Confidence Profile</p>
+          <p className="text-sm text-[#9ca3af]">A single view from score to drivers, aligned with live drama signals.</p>
         </div>
         {debateTriggered && (
           <span className="text-xs text-[#eab308] border border-[#eab308]/30 bg-[#eab308]/5 rounded-full px-3 py-1 leading-none w-fit">
@@ -112,54 +175,63 @@ export default function DramaScoreboard({
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2.5 mb-4">
-        <MetricCard metricKey="drama" value={normalizedMetrics.drama} />
-        <MetricCard metricKey="polarization" value={normalizedMetrics.polarization} />
-        <MetricCard metricKey="heat" value={normalizedMetrics.heat} />
-        <MetricCard metricKey="flipRisk" value={normalizedMetrics.flipRisk} />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-[280px_320px_1fr] gap-4">
-        <div className="border border-[#2a2a2a] rounded-xl p-3 bg-[#121212]">
-          <ConfidenceGauge
-            score={confidence}
-            debateTriggered={false}
-            breakdown={confidenceBreakdown}
-          />
-          <p className="text-sm text-[#d1d5db] mt-2">{confidenceInfo.label}</p>
-          <p className="text-xs text-[#6b7280] mt-1 leading-relaxed">{confidenceInfo.note}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
+        <div className="lg:col-span-2 border border-[#2a2a2a] bg-[#111111] rounded-xl p-4 flex flex-col justify-center">
+          <div
+            className="text-white text-6xl md:text-7xl font-extrabold leading-none tracking-tight"
+            style={{ textShadow: '0 0 20px rgba(59,130,246,0.28)' }}
+          >
+            {score ?? '--'}
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-sm text-[#9ca3af]">Confidence</span>
+            <span className={`text-xs rounded-full border px-2 py-0.5 ${status.tone}`}>{status.label}</span>
+          </div>
+          <p className="text-sm text-gray-400 leading-relaxed mt-3">{band.note}</p>
+          {(strongestCard || weakestCard) && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {strongestCard && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+                  Strongest {strongestCard.name} {strongestCard.value}
+                </span>
+              )}
+              {weakestCard && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+                  Weakest {weakestCard.name} {weakestCard.value}
+                </span>
+              )}
+            </div>
+          )}
+          {snapshotLines.length > 0 && (
+            <p className="text-xs text-zinc-500 leading-relaxed mt-2">{snapshotLines[0]}</p>
+          )}
         </div>
 
-        <ConfidenceRadar breakdown={confidenceBreakdown} />
-
-        <div className="border border-[#2a2a2a] rounded-xl p-3 bg-[#121212]">
-          <p className="text-[11px] uppercase tracking-widest text-[#6b7280] mb-2">Snapshot to Confidence Mapping</p>
-          <div className="grid grid-cols-1 gap-2.5">
-            {CONFIDENCE_MAP.map((row) => (
-              <MappingRow
-                key={row.key}
-                row={row}
-                breakdown={confidenceBreakdown}
-                metrics={normalizedMetrics}
-              />
-            ))}
+        <div className="lg:col-span-3 border border-[#2a2a2a] bg-[#111111] rounded-xl p-3">
+          <div className="h-[280px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart data={radarData} outerRadius="78%">
+                <PolarGrid stroke="#2a2a2a" />
+                <PolarAngleAxis dataKey="name" tick={{ fill: '#a1a1aa', fontSize: 11 }} />
+                <Tooltip content={<RadarTooltip />} />
+                <Radar
+                  dataKey="value"
+                  stroke="#22d3ee"
+                  fill="#06b6d4"
+                  fillOpacity={0.4}
+                  strokeWidth={2.2}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {readout.length > 0 && (
-        <div className="mt-4 border border-[#2a2a2a] rounded-xl p-3 bg-[#121212]">
-          <p className="text-[11px] uppercase tracking-widest text-[#6b7280] mb-2">Quick Readout</p>
-          <ul className="space-y-1.5">
-            {readout.map((line, idx) => (
-              <li key={idx} className="text-sm text-[#d1d5db] leading-relaxed flex items-start gap-2">
-                <span className="text-[#3b82f6] mt-1">•</span>
-                <span>{line}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {cards.map((row) => (
+          <DetailCard key={row.name} row={row} />
+        ))}
+      </div>
+    </section>
   )
 }

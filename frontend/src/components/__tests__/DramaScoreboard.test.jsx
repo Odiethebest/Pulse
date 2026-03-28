@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import DramaScoreboard from '../DramaScoreboard'
 
 describe('DramaScoreboard', () => {
-  it('renders four core metrics and confidence mapping', () => {
+  it('renders top bottom confidence layout with radar and metric cards', () => {
     render(
       <DramaScoreboard
         metrics={{
@@ -24,20 +24,26 @@ describe('DramaScoreboard', () => {
       />
     )
 
-    expect(screen.getByText('Drama')).toBeInTheDocument()
-    expect(screen.getByText('Polarization')).toBeInTheDocument()
-    expect(screen.getByText('Heat')).toBeInTheDocument()
-    expect(screen.getByText('Flip Risk')).toBeInTheDocument()
-    expect(screen.getByText('Snapshot to Confidence Mapping')).toBeInTheDocument()
+    expect(screen.getByLabelText('confidence-profile-dashboard')).toBeInTheDocument()
+    expect(screen.getAllByText('Drama 0').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Polarization 100').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Heat 74').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Flip Risk 39').length).toBeGreaterThan(0)
     expect(screen.getByText('Confidence Profile')).toBeInTheDocument()
+    expect(screen.getByText('Confidence')).toBeInTheDocument()
+    expect(screen.getByText('High')).toBeInTheDocument()
     expect(screen.getAllByText('Coverage').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Diversity').length).toBeGreaterThan(0)
-    expect(screen.getByText('Evidence Support')).toBeInTheDocument()
+    expect(screen.getAllByText('Agreement').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Evidence').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Stability').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('0').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('100').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('74').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('39').length).toBeGreaterThan(0)
+    expect(screen.getByText('Strongest Coverage 100')).toBeInTheDocument()
+    expect(screen.getByText('Weakest Stability 35')).toBeInTheDocument()
+    expect(screen.getByTestId('metric-card-coverage')).toBeInTheDocument()
+    expect(screen.getByTestId('metric-card-diversity')).toBeInTheDocument()
+    expect(screen.getByTestId('metric-card-agreement')).toBeInTheDocument()
+    expect(screen.getByTestId('metric-card-evidence')).toBeInTheDocument()
+    expect(screen.getByTestId('metric-card-stability')).toBeInTheDocument()
   })
 
   it('shows pending state when metric values are missing', () => {
@@ -50,8 +56,7 @@ describe('DramaScoreboard', () => {
       />
     )
 
-    expect(screen.getAllByText('Pending report').length).toBeGreaterThan(0)
-    expect(screen.getByText('Waiting for confidence breakdown data.')).toBeInTheDocument()
+    expect(screen.getByText('Pending')).toBeInTheDocument()
     expect(screen.getByText('Run analysis to compute confidence.')).toBeInTheDocument()
   })
 })
