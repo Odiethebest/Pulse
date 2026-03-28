@@ -1,5 +1,11 @@
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api').replace(/\/+$/, '')
 const PULSE_BASE = `${API_BASE}/pulse`
+const DEFAULT_ANALYZE_TIMEOUT_MS = 120_000
+
+const ANALYZE_TIMEOUT_MS = (() => {
+  const raw = Number(import.meta.env.VITE_ANALYZE_TIMEOUT_MS)
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ANALYZE_TIMEOUT_MS
+})()
 
 const clampScore = (v) => Math.max(0, Math.min(100, Number.isFinite(v) ? Math.round(v) : 0))
 const asArray = (v) => Array.isArray(v) ? v : []
@@ -54,6 +60,31 @@ function normalizeSentiment(sentiment, platformLabel) {
   }
 
   return normalized
+}
+
+function normalizeClaimEvidenceMap(rawMap, quickTake, redditSentiment, twitterSentiment) {
+  const normalized = asArray(rawMap)
+    .map((item, i) => ({
+      claimId: item?.claimId || `C${i + 1}`,
+      claim: item?.claim || '',
+      evidenceUrls: asArray(item?.evidenceUrls).filter((url) => typeof url === 'string' && url.length > 0),
+    }))
+    .filter((item) => item.claim.length > 0)
+
+  if (normalized.length > 0) return normalized
+
+  const quoteUrls = [
+    ...asArray(redditSentiment?.representativeQuotes),
+    ...asArray(twitterSentiment?.representativeQuotes),
+  ]
+    .map((q) => q?.url)
+    .filter((url) => typeof url === 'string' && url.length > 0)
+
+  return asArray(quickTake).slice(0, 3).map((claim, i) => ({
+    claimId: `C${i + 1}`,
+    claim,
+    evidenceUrls: quoteUrls.slice(i, i + 2),
+  }))
 }
 
 function normalizeReport(payload) {
@@ -111,6 +142,9 @@ function normalizeReport(payload) {
     revisionSuggestions: payload?.critique?.revisionSuggestions || '',
     evidenceGaps: asArray(payload?.critique?.evidenceGaps),
     deltaHighlights: asArray(payload?.critique?.deltaHighlights),
+    fluffFindings: asArray(payload?.critique?.fluffFindings),
+    informationDensityScore: payload?.critique?.informationDensityScore ?? null,
+    claimEvidenceCoverage: payload?.critique?.claimEvidenceCoverage ?? null,
   }
 
   const confidenceBreakdown = payload?.confidenceBreakdown || {
@@ -133,6 +167,13 @@ function normalizeReport(payload) {
       `Flip risk ${flipRiskScore}/100${payload?.debateTriggered ? ', critic revision triggered.' : '.'}`,
     ]
 
+  const claimEvidenceMap = normalizeClaimEvidenceMap(
+    payload?.claimEvidenceMap,
+    quickTake,
+    redditSentiment,
+    twitterSentiment
+  )
+
   return {
     topic: payload?.topic || '',
     topicSummary: payload?.topicSummary || '',
@@ -154,6 +195,7 @@ function normalizeReport(payload) {
     controversyTopics: normalizedTopics,
     flipSignals,
     revisionDelta,
+    claimEvidenceMap,
   }
 }
 
@@ -164,18 +206,25 @@ function normalizeReport(payload) {
  */
 export async function analyzeTopic(topic) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60_000)
+  const timeout = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS)
 
   try {
-    const res = await fetch(`${PULSE_BASE}/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic }),
-      signal: controller.signal,
-    })
-    if (!res.ok) throw new Error(`analyze failed: ${res.status}`)
-    const payload = await res.json()
-    return normalizeReport(payload)
+    try {
+      const res = await fetch(`${PULSE_BASE}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic }),
+        signal: controller.signal,
+      })
+      if (!res.ok) throw new Error(`analyze failed: ${res.status}`)
+      const payload = await res.json()
+      return normalizeReport(payload)
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        throw new Error(`analyze timed out after ${Math.round(ANALYZE_TIMEOUT_MS / 1000)}s`)
+      }
+      throw err
+    }
   } finally {
     clearTimeout(timeout)
   }

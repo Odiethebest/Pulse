@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { usePulse } from './hooks/usePulse'
 import { keepAlive } from './lib/api'
 import SearchBar from './components/SearchBar'
@@ -17,6 +17,12 @@ export default function App() {
   useEffect(() => keepAlive(), [])
 
   const { status, agentEvents, report, liveText, metrics, submit } = usePulse()
+  const [activeClaimId, setActiveClaimId] = useState(null)
+
+  useEffect(() => {
+    const firstClaimId = report?.claimEvidenceMap?.[0]?.claimId ?? null
+    setActiveClaimId(firstClaimId)
+  }, [report])
 
   const isIdle     = status === 'idle'
   const isLoading  = status === 'loading'
@@ -112,6 +118,8 @@ export default function App() {
                 <QuoteCards
                   redditSentiment={report.redditSentiment}
                   twitterSentiment={report.twitterSentiment}
+                  claimEvidenceMap={report.claimEvidenceMap}
+                  activeClaimId={activeClaimId}
                 />
               </div>
 
@@ -131,6 +139,9 @@ export default function App() {
                   controversyTopics={report.controversyTopics}
                   flipSignals={report.flipSignals}
                   revisionDelta={report.revisionDelta}
+                  claimEvidenceMap={report.claimEvidenceMap}
+                  activeClaimId={activeClaimId}
+                  onClaimSelect={setActiveClaimId}
                 />
               </div>
             </>

@@ -49,7 +49,7 @@ function Badge({ color, bg, children }) {
   )
 }
 
-function QuoteCard({ quote, platform, index }) {
+function QuoteCard({ quote, platform, index, highlighted, dimmed }) {
   const [expanded, setExpanded] = useState(false)
 
   const ps = PLATFORM[platform]  ?? PLATFORM.Reddit
@@ -62,8 +62,16 @@ function QuoteCard({ quote, platform, index }) {
 
   return (
     <div
-      className="animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4 flex flex-col gap-3"
-      style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both', opacity: 0 }}
+      className={`animate-fade-up rounded-xl p-4 flex flex-col gap-3 transition-all ${
+        highlighted
+          ? 'bg-[#151d1a] border border-[#22c55e]/50 shadow-[0_0_0_1px_rgba(34,197,94,0.25)]'
+          : 'bg-[#1a1a1a] border border-[#2a2a2a]'
+      }`}
+      style={{
+        animationDelay: `${index * 50}ms`,
+        animationFillMode: 'both',
+        opacity: dimmed ? 0.55 : 1,
+      }}
     >
       {/* Platform + sentiment badges */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -73,6 +81,9 @@ function QuoteCard({ quote, platform, index }) {
         <Badge color="#9ca3af" bg="rgba(156,163,175,0.08)">
           Evidence {Math.round(evidence * 100)}
         </Badge>
+        {highlighted && (
+          <Badge color="#22c55e" bg="rgba(34,197,94,0.1)">Linked Claim</Badge>
+        )}
       </div>
 
       {/* Quote text */}
@@ -106,12 +117,20 @@ function QuoteCard({ quote, platform, index }) {
   )
 }
 
-export default function QuoteCards({ redditSentiment, twitterSentiment }) {
+export default function QuoteCards({
+  redditSentiment,
+  twitterSentiment,
+  claimEvidenceMap = [],
+  activeClaimId = null,
+}) {
   // Reddit quotes first, then Twitter
   const quotes = [
     ...(redditSentiment?.representativeQuotes ?? []).map(q => ({ ...q, platform: 'Reddit' })),
     ...(twitterSentiment?.representativeQuotes ?? []).map(q => ({ ...q, platform: 'Twitter' })),
   ]
+
+  const selectedClaim = claimEvidenceMap.find((claim) => claim.claimId === activeClaimId) || null
+  const highlightedUrls = new Set(selectedClaim?.evidenceUrls || [])
 
   if (quotes.length === 0) return null
 
@@ -122,7 +141,14 @@ export default function QuoteCards({ redditSentiment, twitterSentiment }) {
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {quotes.map((q, i) => (
-          <QuoteCard key={i} quote={q} platform={q.platform} index={i} />
+          <QuoteCard
+            key={i}
+            quote={q}
+            platform={q.platform}
+            index={i}
+            highlighted={highlightedUrls.has(q.url)}
+            dimmed={highlightedUrls.size > 0 && !highlightedUrls.has(q.url)}
+          />
         ))}
       </div>
     </div>

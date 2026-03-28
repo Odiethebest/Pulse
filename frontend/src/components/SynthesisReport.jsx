@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 
 const mdComponents = {
@@ -20,6 +20,37 @@ const mdComponents = {
     <blockquote className="border-l-2 border-[#3b82f6] pl-4 my-4 text-[#9ca3af] italic">{children}</blockquote>
   ),
   hr: () => <hr className="border-[#2a2a2a] my-6" />,
+}
+
+const REPORTER_SECTION_ORDER = [
+  'Lead',
+  'Frontline Clash',
+  'Top Controversies',
+  'Flip Risk Watch',
+  'Why It Matters',
+  'Reporter Note',
+]
+
+function parseReporterSections(markdown) {
+  const text = typeof markdown === 'string' ? markdown.replace(/\r\n/g, '\n') : ''
+  if (!text.trim()) return null
+
+  const headingRegex = /^##\s+(Lead|Frontline Clash|Top Controversies|Flip Risk Watch|Why It Matters|Reporter Note)\s*$/gm
+  const matches = []
+  let match
+  while ((match = headingRegex.exec(text)) !== null) {
+    matches.push({ title: match[1], index: match.index, headingLength: match[0].length })
+  }
+  if (matches.length === 0) return null
+
+  const sections = {}
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i]
+    const start = current.index + current.headingLength
+    const end = i + 1 < matches.length ? matches[i + 1].index : text.length
+    sections[current.title] = text.slice(start, end).trim()
+  }
+  return sections
 }
 
 function ChevronIcon({ open }) {
@@ -90,12 +121,14 @@ export default function SynthesisReport({
   synthesis,
   critique,
   debateTriggered,
-  quickTake = [],
-  controversyTopics = [],
-  flipSignals = [],
+  claimEvidenceMap = [],
+  activeClaimId = null,
+  onClaimSelect = () => {},
   revisionDelta = [],
 }) {
   if (!synthesis) return null
+
+  const reporterSections = useMemo(() => parseReporterSections(synthesis), [synthesis])
 
   return (
     <div>
@@ -114,64 +147,73 @@ export default function SynthesisReport({
             </div>
           )}
 
-          {quickTake.length > 0 && (
+          {claimEvidenceMap.length > 0 && (
             <section className="mb-7">
-              <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-2">Quick Take</h3>
-              <ul className="space-y-2">
-                {quickTake.slice(0, 3).map((line, i) => (
-                  <li key={i} className="text-[#e5e7eb] text-sm leading-relaxed flex items-start gap-2">
-                    <span className="text-[#3b82f6] mt-1">•</span>
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {controversyTopics.length > 0 && (
-            <section className="mb-7">
-              <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-3">Controversy Heatmap</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {controversyTopics.slice(0, 6).map((topic, i) => (
-                  <div key={i} className="border border-[#2a2a2a] rounded-lg p-3 bg-[#111111]">
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <p className="text-[#d1d5db] text-sm font-medium">{topic?.aspect || 'General'}</p>
-                      <TopicHeat topic={topic} />
-                    </div>
-                    <p className="text-[#9ca3af] text-xs leading-relaxed">{topic?.summary || 'No summary provided'}</p>
-                  </div>
-                ))}
+              <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-3">Core Claims</h3>
+              <div className="space-y-2">
+                {claimEvidenceMap.slice(0, 3).map((claim) => {
+                  const active = claim.claimId === activeClaimId
+                  return (
+                    <button
+                      key={claim.claimId}
+                      onClick={() => onClaimSelect(claim.claimId)}
+                      className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${
+                        active
+                          ? 'border-[#22c55e]/50 bg-[#14532d]/20'
+                          : 'border-[#2a2a2a] bg-[#111111] hover:bg-[#151515]'
+                      }`}
+                    >
+                      <p className="text-[11px] uppercase tracking-widest text-[#6b7280] mb-1">{claim.claimId}</p>
+                      <p className="text-sm text-[#e5e7eb] leading-relaxed">{claim.claim}</p>
+                      <p className="text-xs text-[#6b7280] mt-1.5">
+                        Evidence links: {claim.evidenceUrls?.length ?? 0}
+                      </p>
+                    </button>
+                  )
+                })}
               </div>
+              <p className="text-xs text-[#6b7280] mt-2">Click a claim to highlight related quote cards.</p>
             </section>
           )}
 
-          {flipSignals.length > 0 && (
-            <section className="mb-7">
-              <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-2">Flip Risk Watch</h3>
-              <ul className="space-y-2">
-                {flipSignals.slice(0, 5).map((signal, i) => (
-                  <li key={i} className="text-sm text-[#fca5a5] leading-relaxed">
-                    {signal?.summary || signal?.signal || 'Narrative instability detected'}
-                  </li>
-                ))}
-              </ul>
-            </section>
+          {reporterSections ? (
+            REPORTER_SECTION_ORDER.map((title) => {
+              const content = reporterSections[title]
+              if (!content) return null
+              return (
+                <section key={title} className="mb-7 last:mb-0">
+                  <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-2">{title}</h3>
+                  {title === 'Top Controversies' ? (
+                    <div className="border border-[#2a2a2a] rounded-lg p-3 bg-[#111111]">
+                      <ReactMarkdown components={mdComponents}>
+                        {content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <ReactMarkdown components={mdComponents}>
+                      {content}
+                    </ReactMarkdown>
+                  )}
+                </section>
+              )
+            })
+          ) : (
+            <ReactMarkdown components={mdComponents}>
+              {synthesis}
+            </ReactMarkdown>
           )}
-
-          {/* Synthesis prose — rendered as markdown */}
-          <ReactMarkdown components={mdComponents}>
-            {synthesis}
-          </ReactMarkdown>
 
           {/* Accordions */}
           {(critique?.unsupportedClaims?.length > 0
             || critique?.biasConcerns?.length > 0
             || critique?.evidenceGaps?.length > 0
+            || critique?.fluffFindings?.length > 0
             || revisionDelta?.length > 0) && (
             <div className="mt-8 space-y-3">
               <Accordion title="Unsupported Claims" items={critique?.unsupportedClaims} />
               <Accordion title="Bias Concerns"      items={critique?.biasConcerns} />
               <Accordion title="Evidence Gaps"      items={critique?.evidenceGaps} />
+              <Accordion title="Fluff Findings"     items={critique?.fluffFindings} />
               <Accordion title="Revision Delta"     items={revisionDelta} />
             </div>
           )}
