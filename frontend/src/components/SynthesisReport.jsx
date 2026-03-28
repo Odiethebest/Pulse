@@ -74,7 +74,27 @@ function Accordion({ title, items }) {
   )
 }
 
-export default function SynthesisReport({ synthesis, critique, debateTriggered }) {
+function TopicHeat({ topic }) {
+  const heat = Math.max(0, Math.min(100, Number(topic?.heat ?? 0)))
+  const tone = heat >= 70 ? 'text-[#ef4444] border-[#ef4444]/30 bg-[#ef4444]/10'
+    : heat >= 40 ? 'text-[#eab308] border-[#eab308]/30 bg-[#eab308]/10'
+      : 'text-[#22c55e] border-[#22c55e]/30 bg-[#22c55e]/10'
+  return (
+    <span className={`text-xs rounded-full px-2 py-0.5 border ${tone}`}>
+      Heat {heat}
+    </span>
+  )
+}
+
+export default function SynthesisReport({
+  synthesis,
+  critique,
+  debateTriggered,
+  quickTake = [],
+  controversyTopics = [],
+  flipSignals = [],
+  revisionDelta = [],
+}) {
   if (!synthesis) return null
 
   return (
@@ -94,16 +114,65 @@ export default function SynthesisReport({ synthesis, critique, debateTriggered }
             </div>
           )}
 
+          {quickTake.length > 0 && (
+            <section className="mb-7">
+              <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-2">Quick Take</h3>
+              <ul className="space-y-2">
+                {quickTake.slice(0, 3).map((line, i) => (
+                  <li key={i} className="text-[#e5e7eb] text-sm leading-relaxed flex items-start gap-2">
+                    <span className="text-[#3b82f6] mt-1">•</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {controversyTopics.length > 0 && (
+            <section className="mb-7">
+              <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-3">Controversy Heatmap</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {controversyTopics.slice(0, 6).map((topic, i) => (
+                  <div key={i} className="border border-[#2a2a2a] rounded-lg p-3 bg-[#111111]">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-[#d1d5db] text-sm font-medium">{topic?.aspect || 'General'}</p>
+                      <TopicHeat topic={topic} />
+                    </div>
+                    <p className="text-[#9ca3af] text-xs leading-relaxed">{topic?.summary || 'No summary provided'}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {flipSignals.length > 0 && (
+            <section className="mb-7">
+              <h3 className="text-sm uppercase tracking-widest text-[#6b7280] mb-2">Flip Risk Watch</h3>
+              <ul className="space-y-2">
+                {flipSignals.slice(0, 5).map((signal, i) => (
+                  <li key={i} className="text-sm text-[#fca5a5] leading-relaxed">
+                    {signal?.summary || signal?.signal || 'Narrative instability detected'}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {/* Synthesis prose — rendered as markdown */}
           <ReactMarkdown components={mdComponents}>
             {synthesis}
           </ReactMarkdown>
 
           {/* Accordions */}
-          {(critique?.unsupportedClaims?.length > 0 || critique?.biasConcerns?.length > 0) && (
+          {(critique?.unsupportedClaims?.length > 0
+            || critique?.biasConcerns?.length > 0
+            || critique?.evidenceGaps?.length > 0
+            || revisionDelta?.length > 0) && (
             <div className="mt-8 space-y-3">
               <Accordion title="Unsupported Claims" items={critique?.unsupportedClaims} />
               <Accordion title="Bias Concerns"      items={critique?.biasConcerns} />
+              <Accordion title="Evidence Gaps"      items={critique?.evidenceGaps} />
+              <Accordion title="Revision Delta"     items={revisionDelta} />
             </div>
           )}
 
