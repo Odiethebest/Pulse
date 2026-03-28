@@ -11,6 +11,10 @@ const MATCH = {
     /sentiment/i.test(e.agentName) && /reddit/i.test(e.summary || ''),
   sentimentTwitter: (e) =>
     /sentiment/i.test(e.agentName) && /twitter/i.test(e.summary || ''),
+  stance:           (e) => /stance/i.test(e.agentName),
+  conflict:         (e) => /conflict/i.test(e.agentName),
+  aspect:           (e) => /aspect/i.test(e.agentName),
+  flipRisk:         (e) => /fliprisk/i.test(e.agentName),
   synthesis:        (e) => /synthesis/i.test(e.agentName),
   critic:           (e) => /critic/i.test(e.agentName),
 }
@@ -38,9 +42,9 @@ function resolveDuration(id, events) {
 }
 
 // --- static layout ---
-const CY = 68   // center row y
-const TY = 8    // top parallel y
-const BY = 128  // bottom parallel y
+const CY = 94   // center row y
+const TY = 20   // top parallel y
+const BY = 170  // bottom parallel y
 const XS = 180  // x step between columns
 
 const STATIC_NODES = [
@@ -49,9 +53,13 @@ const STATIC_NODES = [
   { id: 'twitter',          label: 'Twitter',            x: XS,     y: BY },
   { id: 'sentimentReddit',  label: 'Sentiment·Reddit',   x: XS * 2, y: TY },
   { id: 'sentimentTwitter', label: 'Sentiment·Twitter',  x: XS * 2, y: BY },
-  { id: 'synthesis',        label: 'Synthesis',          x: XS * 3, y: CY },
-  { id: 'critic',           label: 'Critic',             x: XS * 4, y: CY },
-  { id: 'final',            label: 'Final',              x: XS * 5, y: CY },
+  { id: 'stance',           label: 'Stance',             x: XS * 3, y: 0 },
+  { id: 'conflict',         label: 'Conflict',           x: XS * 3, y: 64 },
+  { id: 'aspect',           label: 'Aspect',             x: XS * 3, y: 128 },
+  { id: 'flipRisk',         label: 'FlipRisk',           x: XS * 3, y: 192 },
+  { id: 'synthesis',        label: 'Synthesis',          x: XS * 4, y: CY },
+  { id: 'critic',           label: 'Critic',             x: XS * 5, y: CY },
+  { id: 'final',            label: 'Final',              x: XS * 6, y: CY },
 ]
 
 const STATIC_EDGES = [
@@ -59,8 +67,18 @@ const STATIC_EDGES = [
   { id: 'e-qp-t',  source: 'queryPlanner',     target: 'twitter' },
   { id: 'e-r-sr',  source: 'reddit',           target: 'sentimentReddit' },
   { id: 'e-t-st',  source: 'twitter',          target: 'sentimentTwitter' },
-  { id: 'e-sr-sy', source: 'sentimentReddit',  target: 'synthesis' },
-  { id: 'e-st-sy', source: 'sentimentTwitter', target: 'synthesis' },
+  { id: 'e-sr-st', source: 'sentimentReddit',  target: 'stance' },
+  { id: 'e-st-st', source: 'sentimentTwitter', target: 'stance' },
+  { id: 'e-sr-co', source: 'sentimentReddit',  target: 'conflict' },
+  { id: 'e-st-co', source: 'sentimentTwitter', target: 'conflict' },
+  { id: 'e-sr-as', source: 'sentimentReddit',  target: 'aspect' },
+  { id: 'e-st-as', source: 'sentimentTwitter', target: 'aspect' },
+  { id: 'e-sr-fr', source: 'sentimentReddit',  target: 'flipRisk' },
+  { id: 'e-st-fr', source: 'sentimentTwitter', target: 'flipRisk' },
+  { id: 'e-stn-sy', source: 'stance',          target: 'synthesis' },
+  { id: 'e-cf-sy',  source: 'conflict',        target: 'synthesis' },
+  { id: 'e-as-sy',  source: 'aspect',          target: 'synthesis' },
+  { id: 'e-fr-sy',  source: 'flipRisk',        target: 'synthesis' },
   { id: 'e-sy-cr', source: 'synthesis',        target: 'critic' },
   { id: 'e-cr-fn', source: 'critic',           target: 'final' },
 ]
@@ -210,7 +228,7 @@ export default function AgentGraph({ agentEvents = [], runStatus = 'idle' }) {
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[#2a2a2a]">
-      <div style={{ height: 240, minWidth: 760 }}>
+      <div style={{ height: 300, minWidth: 1220 }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
