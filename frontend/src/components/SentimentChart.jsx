@@ -1,9 +1,10 @@
+import { useMemo, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 
-function buildData(redditSentiment, twitterSentiment) {
+function buildSentimentData(redditSentiment, twitterSentiment) {
   const pct = (v) => Math.round((v ?? 0) * 100)
   return [
     {
@@ -17,6 +18,35 @@ function buildData(redditSentiment, twitterSentiment) {
       Positive: pct(twitterSentiment?.positiveRatio),
       Neutral:  pct(twitterSentiment?.neutralRatio),
       Negative: pct(twitterSentiment?.negativeRatio),
+    },
+  ]
+}
+
+function buildCampData(redditSentiment, twitterSentiment) {
+  const pct = (v) => Math.round((v ?? 0) * 100)
+  const redditCamp = redditSentiment?.stanceDistribution || {
+    support: redditSentiment?.positiveRatio,
+    oppose: redditSentiment?.negativeRatio,
+    neutral: redditSentiment?.neutralRatio,
+  }
+  const twitterCamp = twitterSentiment?.stanceDistribution || {
+    support: twitterSentiment?.positiveRatio,
+    oppose: twitterSentiment?.negativeRatio,
+    neutral: twitterSentiment?.neutralRatio,
+  }
+
+  return [
+    {
+      platform: 'Reddit',
+      Support: pct(redditCamp?.support),
+      Neutral: pct(redditCamp?.neutral),
+      Oppose: pct(redditCamp?.oppose),
+    },
+    {
+      platform: 'Twitter',
+      Support: pct(twitterCamp?.support),
+      Neutral: pct(twitterCamp?.neutral),
+      Oppose: pct(twitterCamp?.oppose),
     },
   ]
 }
@@ -57,11 +87,44 @@ function CustomLegend({ payload }) {
 }
 
 export default function SentimentChart({ redditSentiment, twitterSentiment, platformDiff }) {
-  const data = buildData(redditSentiment, twitterSentiment)
+  const [view, setView] = useState('sentiment')
+  const data = useMemo(
+    () => view === 'sentiment'
+      ? buildSentimentData(redditSentiment, twitterSentiment)
+      : buildCampData(redditSentiment, twitterSentiment),
+    [view, redditSentiment, twitterSentiment]
+  )
+  const series = view === 'sentiment'
+    ? [
+      { key: 'Positive', color: '#22c55e', duration: 800 },
+      { key: 'Neutral', color: '#6b7280', duration: 900 },
+      { key: 'Negative', color: '#ef4444', duration: 1000 },
+    ]
+    : [
+      { key: 'Support', color: '#22c55e', duration: 800 },
+      { key: 'Neutral', color: '#6b7280', duration: 900 },
+      { key: 'Oppose', color: '#ef4444', duration: 1000 },
+    ]
 
   return (
     <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5">
-      <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-4 font-medium">Sentiment</p>
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <p className="text-[#4b5563] text-xs uppercase tracking-widest font-medium">Sentiment</p>
+        <div className="flex items-center gap-1 bg-[#111111] border border-[#2a2a2a] rounded-lg p-1">
+          <button
+            onClick={() => setView('sentiment')}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${view === 'sentiment' ? 'bg-[#2a2a2a] text-[#e5e7eb]' : 'text-[#6b7280] hover:text-[#9ca3af]'}`}
+          >
+            Emotion
+          </button>
+          <button
+            onClick={() => setView('camp')}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${view === 'camp' ? 'bg-[#2a2a2a] text-[#e5e7eb]' : 'text-[#6b7280] hover:text-[#9ca3af]'}`}
+          >
+            Camp
+          </button>
+        </div>
+      </div>
 
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} barCategoryGap="35%" barGap={3}>
@@ -83,9 +146,15 @@ export default function SentimentChart({ redditSentiment, twitterSentiment, plat
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
           <Legend verticalAlign="top" content={<CustomLegend />} />
-          <Bar dataKey="Positive" fill="#22c55e" radius={[3, 3, 0, 0]} animationDuration={800} />
-          <Bar dataKey="Neutral"  fill="#6b7280" radius={[3, 3, 0, 0]} animationDuration={900} />
-          <Bar dataKey="Negative" fill="#ef4444" radius={[3, 3, 0, 0]} animationDuration={1000} />
+          {series.map((item) => (
+            <Bar
+              key={item.key}
+              dataKey={item.key}
+              fill={item.color}
+              radius={[3, 3, 0, 0]}
+              animationDuration={item.duration}
+            />
+          ))}
         </BarChart>
       </ResponsiveContainer>
 
