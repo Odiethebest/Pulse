@@ -11,15 +11,32 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+
 @Component
 @RequiredArgsConstructor
 public class SynthesisAgent {
 
     private static final Logger log = LoggerFactory.getLogger(SynthesisAgent.class);
+    private static final Pattern RAW_SCORE_PATTERN = Pattern.compile("(?is).*\\b\\d{1,3}\\s*/\\s*100\\b.*");
+    private static final Pattern TRAILING_TAG_PATTERN = Pattern.compile(
+            "(?is).*\\(\\s*(?:fierce|explosive|simmering|volatile|fragile|stable|quiet|niche|intense|heated)(?:\\s+and\\s+[a-z]+)*\\s*\\).*");
+    private static final Pattern FRANKENSTEIN_ENTITY_PATTERN = Pattern.compile(
+            "(?is).*(?:public\\s+perception|discourse|debate)\\s+of\\s+(?:there\\s+(?:is|are|was|were)|that\\s+|whether\\s+|it\\s+is\\s+).*");
+    private static final Pattern ROBOTIC_TRANSITION_PATTERN = Pattern.compile(
+            "(?is).*(?:The consensus is\\s+[^.]+,\\s*so one strong catalyst|Because this debate\\s+[^.]+,\\s*it can quickly).*");
+    private static final List<String> RAW_DUMP_MARKERS = List.of(
+            "=== evidence bank",
+            "=== reddit posts",
+            "=== twitter/x posts"
+    );
 
     private static final String SYSTEM_PROMPT = """
-            You are a frontline social-news reporter.
-            Write a high-signal report about what people are fighting over.
+            # ROLE
+            You are an elite data journalist analyzing public sentiment.
+            Your task is to synthesize raw metrics, agent feedback, and stance distributions into a highly readable, human-sounding executive briefing.
 
             Output markdown using exactly these six sections and this order:
             ## Lead
@@ -29,14 +46,20 @@ public class SynthesisAgent {
             ## Why It Matters
             ## Reporter Note
 
-            <Style_and_Formatting_Rules>
-            1. NO RAW QUERIES: You MUST NOT copy and paste raw user query strings or malformed topic tags. You MUST paraphrase them into natural entities.
-            2. ADJECTIVE WEAVING, NO TAGS: You MUST NOT append metric adjectives as parenthetical tags. Weave them naturally into sentence structure.
-            3. LOGICAL TRANSITIONS:
-               - If consensus is stable, use concession transitions such as "While..." or "Despite...".
-               - If consensus is volatile, use warning transitions such as "Because..." or "As...".
-            4. EMBED QUOTES NATURALLY: Introduce quote evidence as part of the narrative flow, not a plain list.
-            </Style_and_Formatting_Rules>
+            # CRITICAL CONSTRAINTS AND FORMATTING RULES (STRICTLY ENFORCED)
+            1. PARAPHRASE, DO NOT PASTE:
+               - You MUST NOT copy raw queries or malformed topic text.
+               - You MUST distill them into concise noun phrases.
+            2. WEAVE ADJECTIVES, NO TRAILING TAGS:
+               - You are STRICTLY FORBIDDEN from appending parenthetical tags like "(fierce and explosive)".
+               - You MUST embed intensity words naturally in sentence structure.
+            3. DYNAMIC JOURNALISTIC SYNTAX:
+               - Avoid robotic templates like "Because X, so Y."
+               - For high flip risk, use warning transitions.
+               - For low flip risk, use stabilizing transitions.
+            4. EXPLICITLY ACTION CRITIC FEEDBACK:
+               - If Critic feedback contains evidence gaps or bias concerns, your revised text MUST address them directly.
+               - Embed representative quote evidence naturally.
 
             Translation rules:
             - No raw query strings in final text. Convert query-like topic text into natural entity phrasing such as "public perception of [entity]" or "discourse around [entity]".
@@ -77,17 +100,31 @@ public class SynthesisAgent {
             """;
 
     private static final String REVISION_SYSTEM_PROMPT = """
-            You are a frontline social-news reporter revising a report based on critic feedback.
-            Keep the same six-section template and improve evidence quality.
+            You are an elite data journalist revising a report based on critic feedback.
+            Keep the same six-section template and improve evidence quality and readability.
+
+            # CRITICAL CONSTRAINTS AND FORMATTING RULES (STRICTLY ENFORCED)
+            1. PARAPHRASE, DO NOT PASTE:
+               - You MUST NOT copy raw queries or malformed topic text.
+               - You MUST distill them into concise noun phrases.
+            2. WEAVE ADJECTIVES, NO TRAILING TAGS:
+               - You are STRICTLY FORBIDDEN from appending parenthetical tags like "(fierce and explosive)".
+               - You MUST embed intensity words naturally in sentence structure.
+            3. DYNAMIC JOURNALISTIC SYNTAX:
+               - Avoid robotic templates like "Because X, so Y."
+               - For high flip risk, use warning transitions.
+               - For low flip risk, use stabilizing transitions.
+            4. EXPLICITLY ACTION CRITIC FEEDBACK:
+               - If Critic feedback contains evidence gaps or bias concerns, your revised text MUST address them directly.
+               - Embed representative quote evidence naturally.
 
             Revision priorities:
             - remove unsupported claims or add explicit qualifiers
             - strengthen weak claims with concrete evidence tags
-            - smooth awkward entities and remove raw query fragments
-            - convert score language into narrative descriptors rather than numbers
-            - use contrastive syntax for camp distribution
-            - reduce repetitive and generic phrasing
-            - preserve readability and section structure
+            - eliminate pasted raw query fragments
+            - remove trailing adjective tags in parentheses
+            - vary transitions and avoid repetitive template sentences
+            - preserve readability and strict section structure
             """;
 
     private final ChatClient chatClient;
@@ -137,12 +174,12 @@ public class SynthesisAgent {
         try {
             String userPrompt = buildUserPrompt(reddit, twitter, redditSentiment, twitterSentiment, critique, coreEntity);
             String systemPrompt = isRevision ? REVISION_SYSTEM_PROMPT : SYSTEM_PROMPT;
-
-            String result = chatClient.prompt()
-                    .system(systemPrompt)
-                    .user(userPrompt)
-                    .call()
-                    .content();
+            String result = generate(systemPrompt, userPrompt);
+            List<String> violations = collectCriticalViolations(result);
+            if (!violations.isEmpty()) {
+                String retryPrompt = buildRetryPrompt(userPrompt, result, violations);
+                result = generate(systemPrompt, retryPrompt);
+            }
 
             long duration = System.currentTimeMillis() - start;
             publisher.publish(AgentEvent.completed(label,
@@ -164,7 +201,8 @@ public class SynthesisAgent {
         StringBuilder sb = new StringBuilder();
         sb.append("=== NORMALIZED CORE ENTITY ===\n");
         sb.append(coreEntity == null || coreEntity.isBlank() ? "not provided" : coreEntity);
-        sb.append("\n\n");
+        sb.append("\n");
+        sb.append("Use this noun phrase as the anchor entity in your writing. Do not rewrite it into a clause.\n\n");
 
         sb.append("=== REDDIT SENTIMENT ===\n");
         sb.append("Positive: %.0f%%, Negative: %.0f%%, Neutral: %.0f%%\n".formatted(
@@ -215,6 +253,67 @@ public class SynthesisAgent {
         }
 
         return sb.toString();
+    }
+
+    private String generate(String systemPrompt, String userPrompt) {
+        return chatClient.prompt()
+                .system(systemPrompt)
+                .user(userPrompt)
+                .call()
+                .content();
+    }
+
+    private List<String> collectCriticalViolations(String content) {
+        List<String> violations = new ArrayList<>();
+        if (content == null || content.isBlank()) {
+            violations.add("Output is empty.");
+            return violations;
+        }
+        if (RAW_SCORE_PATTERN.matcher(content).matches()) {
+            violations.add("Raw score expression like xx/100 was found.");
+        }
+        if (TRAILING_TAG_PATTERN.matcher(content).matches()) {
+            violations.add("Trailing parenthetical adjective tag was found.");
+        }
+        if (FRANKENSTEIN_ENTITY_PATTERN.matcher(content).matches()) {
+            violations.add("Frankenstein entity phrasing was found.");
+        }
+        if (ROBOTIC_TRANSITION_PATTERN.matcher(content).matches()) {
+            violations.add("Robotic transition template was found.");
+        }
+        String lower = content.toLowerCase();
+        for (String marker : RAW_DUMP_MARKERS) {
+            if (lower.contains(marker)) {
+                violations.add("Raw dump marker was found: " + marker);
+            }
+        }
+        return violations;
+    }
+
+    private String buildRetryPrompt(String originalUserPrompt, String previousOutput, List<String> violations) {
+        String violationSummary = violations.isEmpty() ? "- formatting issue detected" : violations.stream()
+                .map(v -> "- " + v)
+                .reduce((a, b) -> a + "\n" + b)
+                .orElse("- formatting issue detected");
+        return """
+                %s
+
+                === OUTPUT VALIDATION FAILED ===
+                Your previous output violated strict style constraints.
+                Validation findings:
+                %s
+
+                Fix these issues in a fresh rewrite:
+                1. No trailing parenthetical metric tags.
+                2. No raw score expressions like 45/100.
+                3. No Frankenstein entities such as "public perception of there are ...".
+                4. Keep six required sections exactly.
+                5. Avoid robotic templates like "The consensus is..., so..." and "Because this debate..., it can...".
+                6. Integrate critic feedback directly into narrative with representative quote evidence tags.
+
+                === PREVIOUS INVALID OUTPUT (DO NOT COPY) ===
+                %s
+                """.formatted(originalUserPrompt, violationSummary, previousOutput);
     }
 
     private void appendEvidenceBank(StringBuilder sb, SentimentResult redditSentiment, SentimentResult twitterSentiment) {

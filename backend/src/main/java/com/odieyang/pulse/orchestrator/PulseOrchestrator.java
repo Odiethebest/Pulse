@@ -14,12 +14,24 @@ import reactor.core.Disposable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
 public class PulseOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(PulseOrchestrator.class);
+    private static final Pattern SHELL_PREFIX_PATTERN = Pattern.compile(
+            "(?i)^(?:there\\s+(?:is|are|was|were)\\s+)?(?:growing\\s+|rising\\s+|increasing\\s+|serious\\s+|widespread\\s+|public\\s+)*(?:concern|concerns|debate|debates|discussion|discussions|arguments?|questions?)\\s+(?:about|around|over|on|regarding|concerning|toward|towards)\\s+");
+    private static final Pattern VIEW_PREFIX_PATTERN = Pattern.compile(
+            "(?i)^(?:people'?s\\s+)?(?:atti?tude|opinion|perception|sentiment|view|views|public\\s+opinion|public\\s+perception)\\s+(?:of|about|around|over|on|regarding|concerning|toward|towards)\\s+");
+    private static final Pattern INTENT_PREPOSITION_PATTERN = Pattern.compile(
+            "(?i)\\b(about|around|over|on|regarding|concerning|toward|towards)\\b");
+    private static final Pattern PROPOSITION_VERB_PATTERN = Pattern.compile(
+            "(?i)\\b(is|are|was|were|be|being|been|has|have|had|can|could|should|would|will|may|might|must|do|does|did)\\b");
+    private static final Pattern CLAUSE_BREAK_PATTERN = Pattern.compile(
+            "(?i)(,|;|\\.|\\b(?:because|while|although|though|but|which|that|if|when)\\b)");
 
     private final QueryPlannerAgent queryPlannerAgent;
     private final RedditAgent redditAgent;
@@ -413,12 +425,77 @@ public class PulseOrchestrator {
         if (cleaned.isBlank()) {
             return "the subject";
         }
-        if (cleaned.toLowerCase().startsWith("public perception of ")
-                || cleaned.toLowerCase().startsWith("discourse around ")
-                || cleaned.toLowerCase().startsWith("debate around ")) {
-            return cleaned;
+
+        cleaned = SHELL_PREFIX_PATTERN.matcher(cleaned).replaceFirst("");
+        cleaned = VIEW_PREFIX_PATTERN.matcher(cleaned).replaceFirst("");
+        cleaned = cleaned.replaceAll("(?i)^(?:what|how|why)\\s+do\\s+people\\s+(?:think|feel)\\s+(?:about|regarding|toward|towards)\\s+", "");
+        cleaned = cleaned.replaceAll("(?i)^(?:topic|summary|question)\\s*[:：]\\s*", "");
+        cleaned = cleaned.trim();
+
+        if (looksLikeProposition(cleaned)) {
+            cleaned = extractEntityTail(cleaned);
+            cleaned = trimAtClauseBoundary(cleaned);
+            cleaned = VIEW_PREFIX_PATTERN.matcher(cleaned).replaceFirst("").trim();
         }
-        return "public perception of " + cleaned;
+
+        cleaned = cleaned.replaceAll("(?i)^(?:the\\s+)?(?:issue|question|debate|discussion)\\s+of\\s+", "");
+        cleaned = cleaned.replaceAll("(?i)^(?:the\\s+)?(?:topic|subject)\\s+of\\s+", "");
+        cleaned = cleaned.replaceAll("\\s+", " ").trim();
+
+        if (cleaned.isBlank()) {
+            return "the subject";
+        }
+
+        if (cleaned.split("\\s+").length > 12) {
+            cleaned = limitWords(cleaned, 12);
+        }
+        return cleaned;
+    }
+
+    private boolean looksLikeProposition(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        int wordCount = text.trim().split("\\s+").length;
+        return wordCount >= 7 && PROPOSITION_VERB_PATTERN.matcher(text).find();
+    }
+
+    private String extractEntityTail(String text) {
+        Matcher marker = INTENT_PREPOSITION_PATTERN.matcher(text);
+        if (!marker.find()) {
+            return text;
+        }
+        String prefix = text.substring(0, marker.start()).toLowerCase();
+        boolean hasShellSignal = prefix.matches(".*\\b(concern|concerns|debate|discussion|argument|issue|question|opinion|perception|attitude|sentiment|think|feel|view|views)\\b.*");
+        if (!hasShellSignal) {
+            return text;
+        }
+        String candidate = text.substring(marker.end()).trim();
+        return candidate.isBlank() ? text : candidate;
+    }
+
+    private String trimAtClauseBoundary(String text) {
+        Matcher matcher = CLAUSE_BREAK_PATTERN.matcher(text);
+        if (!matcher.find()) {
+            return text;
+        }
+        String trimmed = text.substring(0, matcher.start()).trim();
+        return trimmed.isBlank() ? text : trimmed;
+    }
+
+    private String limitWords(String text, int maxWords) {
+        String[] words = text.split("\\s+");
+        if (words.length <= maxWords) {
+            return text;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < maxWords; i++) {
+            if (i > 0) {
+                sb.append(' ');
+            }
+            sb.append(words[i]);
+        }
+        return sb.toString();
     }
 
     private List<String> buildQuickTake(List<ClaimEvidenceLink> claimEvidenceMap) {
@@ -481,7 +558,10 @@ public class PulseOrchestrator {
                 || lower.contains("=== twitter/x posts")
                 || lower.contains("=== source:")
                 || lower.matches("(?s).*\\b\\d{1,3}\\s*/\\s*100\\b.*")
-                || lower.matches("(?s).*\\(\\s*(fierce|explosive|simmering|volatile|fragile)[^)]+\\).*"));
+                || lower.matches("(?s).*\\(\\s*(fierce|explosive|simmering|volatile|fragile)[^)]+\\).*")
+                || lower.contains("public perception of there ")
+                || lower.contains("the consensus is ")
+                || lower.contains("because this debate "));
     }
 
     private String buildReporterFallback(
@@ -514,9 +594,12 @@ public class PulseOrchestrator {
                         describeHeat(clampScore(t.heat() == null ? 50 : t.heat()))))
                 .reduce((a, b) -> a + "\n" + b)
                 .orElse("General narrative clash remains the main fight.");
-        String flipWatch = "The consensus is %s, so one strong catalyst could reshape the narrative."
-                .formatted(describeFlipRisk(flipRiskScore));
-        String whyItMatters = "Because this debate is now %s, it can quickly shape mainstream perception and decision narratives."
+        String flipWatch = flipRiskScore >= 70
+                ? "The consensus remains highly fragile, and one strong catalyst could quickly rewrite the dominant narrative."
+                : flipRiskScore >= 40
+                ? "The narrative can still swing if credible new evidence or a fresh controversy lands."
+                : "The discourse has settled into a relatively stable holding pattern, with limited room for sharp reversals.";
+        String whyItMatters = "This debate now runs at a %s level, shaping mainstream framing and what neutral observers are likely to believe next."
                 .formatted(describeHeat(heatScore));
         String reporterNote = platformDiff + " Evidence is sampled from cross-platform public posts and should be read as directional, not universal.";
 

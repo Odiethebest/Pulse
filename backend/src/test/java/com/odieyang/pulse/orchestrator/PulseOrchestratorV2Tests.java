@@ -142,6 +142,54 @@ class PulseOrchestratorV2Tests {
         assertTrue(report.synthesis().contains("## Why It Matters"));
     }
 
+    @Test
+    void analyzeShouldDistillPropositionSummaryIntoEntityPhrase() {
+        var orchestrator = buildOrchestrator(
+                new PropositionSummaryQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+
+        PulseReport report = orchestrator.analyze("Taiwan topic");
+
+        String firstClaim = report.claimEvidenceMap().getFirst().claim().toLowerCase();
+        assertFalse(firstClaim.contains("there are growing public concerns"));
+        assertFalse(firstClaim.contains("public perception of there"));
+        assertTrue(firstClaim.contains("taiwan"), "Expected normalized entity to retain target subject");
+    }
+
+    @Test
+    void analyzeShouldUseNonRoboticFallbackWhenSynthesisContainsBadTemplates() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new InvalidTemplateSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+
+        PulseReport report = orchestrator.analyze("Fallback style topic");
+        String synthesis = report.synthesis();
+
+        assertFalse(synthesis.contains("The consensus is "), "Fallback should avoid robotic consensus template");
+        assertFalse(synthesis.contains("Because this debate"), "Fallback should avoid robotic because-template");
+        assertTrue(synthesis.contains("## Flip Risk Watch"));
+    }
+
     private PulseOrchestrator buildOrchestrator(
             QueryPlannerAgent queryPlannerAgent,
             RedditAgent redditAgent,
@@ -181,6 +229,21 @@ class PulseOrchestratorV2Tests {
                     List.of(topic + " reddit 1", topic + " reddit 2"),
                     List.of(topic + " twitter 1", topic + " twitter 2"),
                     "Summary for " + topic
+            );
+        }
+    }
+
+    private static class PropositionSummaryQueryPlannerAgent extends QueryPlannerAgent {
+        PropositionSummaryQueryPlannerAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public QueryPlan plan(String topic) {
+            return new QueryPlan(
+                    List.of(topic + " reddit"),
+                    List.of(topic + " twitter"),
+                    "There are growing public concerns regarding Taiwan's reunification with China"
             );
         }
     }
@@ -501,6 +564,51 @@ class PulseOrchestratorV2Tests {
                 String coreEntity
         ) {
             return synthesize(reddit, twitter, redditSentiment, twitterSentiment, critique);
+        }
+    }
+
+    private static class InvalidTemplateSynthesisAgent extends SynthesisAgent {
+        InvalidTemplateSynthesisAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public String synthesize(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment
+        ) {
+            return """
+                    ## Lead
+                    Public perception of there are growing concerns around this issue.
+
+                    ## Frontline Clash
+                    Support and oppose voices remain active.
+
+                    ## Top Controversies
+                    One core controversy drives the discussion.
+
+                    ## Flip Risk Watch
+                    The consensus is fragile, so one strong catalyst could reshape the narrative.
+
+                    ## Why It Matters
+                    Because this debate is intense, it can shift perception.
+
+                    ## Reporter Note
+                    Evidence sampled from public posts. (fierce and explosive)
+                    """;
+        }
+
+        @Override
+        public String synthesizeWithCoreEntity(
+                RawPosts reddit,
+                RawPosts twitter,
+                SentimentResult redditSentiment,
+                SentimentResult twitterSentiment,
+                String coreEntity
+        ) {
+            return synthesize(reddit, twitter, redditSentiment, twitterSentiment);
         }
     }
 
