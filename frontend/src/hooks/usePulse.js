@@ -12,6 +12,7 @@ function formatLine(event) {
 
 export function usePulse() {
   const [status,      setStatus]      = useState('idle')
+  const [runId,       setRunId]       = useState(0)
   const [agentEvents, setAgentEvents] = useState([])
   const [report,      setReport]      = useState(null)
   const [liveText,    setLiveText]    = useState('')
@@ -26,6 +27,7 @@ export function usePulse() {
 
   const submit = useCallback(async (topic) => {
     // 1. Reset state
+    setRunId((id) => id + 1)
     setStatus('loading')
     setAgentEvents([])
     setReport(null)
@@ -80,5 +82,5 @@ export function usePulse() {
     }
   }, [])
 
-  return { status, agentEvents, report, liveText, metrics, submit }
+  return { runId, status, agentEvents, report, liveText, metrics, submit }
 }

@@ -191,6 +191,11 @@ function StatusIcon({ state }) {
 const nodeTypes = { agentNode: AgentNode }
 
 export default function AgentGraph({ agentEvents = [], runStatus = 'idle' }) {
+  const safeEvents = useMemo(
+    () => (Array.isArray(agentEvents) ? agentEvents.filter((e) => e && typeof e === 'object') : []),
+    [agentEvents]
+  )
+
   const nodes = useMemo(() =>
     STATIC_NODES.map(({ id, label, x, y }) => ({
       id,
@@ -198,19 +203,19 @@ export default function AgentGraph({ agentEvents = [], runStatus = 'idle' }) {
       position: { x, y },
       data: {
         label,
-        state: resolveState(id, agentEvents, runStatus),
-        duration: resolveDuration(id, agentEvents),
+        state: resolveState(id, safeEvents, runStatus),
+        duration: resolveDuration(id, safeEvents),
       },
       draggable: false,
       selectable: false,
       connectable: false,
     })),
-    [agentEvents, runStatus]
+    [safeEvents, runStatus]
   )
 
   const edges = useMemo(() =>
     STATIC_EDGES.map(({ id, source, target }) => {
-      const srcState = resolveState(source, agentEvents, runStatus)
+      const srcState = resolveState(source, safeEvents, runStatus)
       const stroke =
         srcState === 'complete' ? '#22c55e' :
         srcState === 'running'  ? '#3b82f6' :
@@ -223,7 +228,7 @@ export default function AgentGraph({ agentEvents = [], runStatus = 'idle' }) {
         style: { stroke, strokeWidth: 1.5 },
       }
     }),
-    [agentEvents, runStatus]
+    [safeEvents, runStatus]
   )
 
   return (

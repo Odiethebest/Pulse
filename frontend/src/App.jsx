@@ -16,7 +16,7 @@ import './App.css'
 export default function App() {
   useEffect(() => keepAlive(), [])
 
-  const { status, agentEvents, report, liveText, metrics, submit } = usePulse()
+  const { runId, status, agentEvents, report, liveText, metrics, submit } = usePulse()
   const [activeClaimId, setActiveClaimId] = useState(null)
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export default function App() {
             <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-3 font-medium">
               Agent Execution
             </p>
-            <AgentGraph agentEvents={agentEvents} runStatus={status} />
+            <AgentGraph key={runId} agentEvents={agentEvents} runStatus={status} />
           </div>
 
           {/* ConfidenceGauge + LiveOutput row — appears on loading */}
