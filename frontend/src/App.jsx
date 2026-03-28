@@ -8,6 +8,7 @@ import LiveOutput from './components/LiveOutput'
 import SentimentChart from './components/SentimentChart'
 import QuoteCards from './components/QuoteCards'
 import SynthesisReport from './components/SynthesisReport'
+import CampBattleBoard from './components/CampBattleBoard'
 import './App.css'
 
 export default function App() {
@@ -94,6 +95,10 @@ export default function App() {
                   twitterSentiment={report.twitterSentiment}
                   platformDiff={report.platformDiff}
                 />
+              </div>
+
+              <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+                <CampBattleBoard campDistribution={report.campDistribution} />
               </div>
 
               <div className="animate-fade-up" style={{ animationDelay: '100ms' }}>
