@@ -65,6 +65,13 @@ describe('usePulse V2 flow', () => {
       heat: 74,
       flipRisk: 39,
     })
+    expect(result.current.agentSummary).toEqual({
+      running: 0,
+      completed: 1,
+      failed: 0,
+      total: 2,
+      overallState: 'complete',
+    })
     expect(cleanup).toHaveBeenCalledTimes(1)
 
     act(() => sseOnError())
@@ -91,6 +98,7 @@ describe('usePulse V2 flow', () => {
       heat: null,
       flipRisk: null,
     })
+    expect(result.current.agentSummary.overallState).toBe('failed')
     expect(cleanup).toHaveBeenCalledTimes(1)
     consoleErrorSpy.mockRestore()
   })

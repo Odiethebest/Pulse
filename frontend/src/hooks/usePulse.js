@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { analyzeTopic, connectSSE } from '../lib/api'
 
 function formatLine(event) {
@@ -24,6 +24,38 @@ export function usePulse() {
   })
 
   const closeSSE = useRef(null)
+
+  const agentSummary = useMemo(() => {
+    const counts = agentEvents.reduce((acc, event) => {
+      if (!event || typeof event !== 'object') return acc
+      if (event.status === 'STARTED') acc.started += 1
+      if (event.status === 'COMPLETED') acc.completed += 1
+      if (event.status === 'FAILED') acc.failed += 1
+      return acc
+    }, { started: 0, completed: 0, failed: 0 })
+
+    const running = Math.max(0, counts.started - counts.completed - counts.failed)
+    const total = counts.started + counts.completed + counts.failed
+
+    let overallState = 'idle'
+    if (status === 'error') {
+      overallState = 'failed'
+    } else if (status === 'loading') {
+      overallState = 'running'
+    } else if (status === 'complete' && counts.failed > 0) {
+      overallState = 'warning'
+    } else if (status === 'complete') {
+      overallState = 'complete'
+    }
+
+    return {
+      running,
+      completed: counts.completed,
+      failed: counts.failed,
+      total,
+      overallState,
+    }
+  }, [agentEvents, status])
 
   const submit = useCallback(async (topic) => {
     // 1. Reset state
@@ -82,5 +114,5 @@ export function usePulse() {
     }
   }, [])
 
-  return { runId, status, agentEvents, report, liveText, metrics, submit }
+  return { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit }
 }

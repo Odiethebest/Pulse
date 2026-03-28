@@ -19,6 +19,31 @@
   z-index: 1;
 }
 
+.pulse-topbar {
+  position: fixed;
+  top: 14px;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.pulse-topbar-inner {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 0 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pulse-topbar-inner > * {
+  pointer-events: auto;
+}
+
+.global-run-status {
+  min-width: 280px;
+}
+
 .drama-module {
   position: relative;
   overflow: hidden;
@@ -48,3 +73,59 @@
 .stagger-1 { animation-delay: 40ms; }
 .stagger-2 { animation-delay: 80ms; }
 .stagger-3 { animation-delay: 120ms; }
+
+.trace-drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.trace-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.62);
+  backdrop-filter: blur(1.5px);
+  border: 0;
+  cursor: pointer;
+}
+
+.trace-drawer-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(940px, 100vw);
+  height: 100%;
+  background: #0f0f0f;
+  border-left: 1px solid #2a2a2a;
+  box-shadow: -20px 0 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  animation: drawer-in 0.26s ease;
+}
+
+.trace-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.trace-drawer-body {
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+  display: grid;
+  gap: 14px;
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
