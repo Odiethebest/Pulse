@@ -10,6 +10,7 @@ import QuoteCards from './components/QuoteCards'
 import SynthesisReport from './components/SynthesisReport'
 import CampBattleBoard from './components/CampBattleBoard'
 import ControversyBoard from './components/ControversyBoard'
+import RevisionDeltaPanel from './components/RevisionDeltaPanel'
 import './App.css'
 
 export default function App() {
@@ -113,7 +114,14 @@ export default function App() {
                 />
               </div>
 
-              <div className="animate-fade-up" style={{ animationDelay: '200ms' }}>
+              <div className="animate-fade-up" style={{ animationDelay: '160ms' }}>
+                <RevisionDeltaPanel
+                  revisionDelta={report.revisionDelta}
+                  critique={report.critique}
+                />
+              </div>
+
+              <div className="animate-fade-up" style={{ animationDelay: '220ms' }}>
                 <SynthesisReport
                   synthesis={report.synthesis}
                   critique={report.critique}
