@@ -26,7 +26,9 @@ public class CriticAgent {
               "biasConcerns": ["concern1", "concern2"],
               "exceedsDataScope": <true|false>,
               "confidenceScore": <0-100>,
-              "revisionSuggestions": "specific actionable guidance for improving the report"
+              "revisionSuggestions": "specific actionable guidance for improving the report",
+              "evidenceGaps": ["gap1", "gap2"],
+              "deltaHighlights": ["change1", "change2"]
             }
 
             Scoring guide for confidenceScore:
@@ -40,6 +42,8 @@ public class CriticAgent {
             - biasConcerns: list any framing, omissions, or language that skews the analysis
             - exceedsDataScope: true if the report draws conclusions beyond what the data supports
             - revisionSuggestions: concrete, actionable guidance (not just "be more balanced")
+            - evidenceGaps: concrete missing evidence links or weakly supported statements
+            - deltaHighlights: concise before-after change points required in revision
             - Output valid JSON only, no markdown fences
             """;
 
@@ -60,9 +64,11 @@ public class CriticAgent {
                     .entity(CriticResult.class);
 
             long duration = System.currentTimeMillis() - start;
+            int gaps = result.evidenceGaps() == null ? 0 : result.evidenceGaps().size();
             publisher.publish(AgentEvent.completed("CriticAgent",
-                    "Confidence score: %d/100".formatted(result.confidenceScore()), duration));
-            log.info("CriticAgent completed in {}ms, confidence={}", duration, result.confidenceScore());
+                    "Confidence: %d/100, evidence gaps: %d".formatted(result.confidenceScore(), gaps), duration));
+            log.info("CriticAgent completed in {}ms, confidence={}, evidenceGaps={}",
+                    duration, result.confidenceScore(), gaps);
             return result;
 
         } catch (Exception e) {
