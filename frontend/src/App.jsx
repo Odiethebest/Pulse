@@ -26,10 +26,11 @@ export default function App() {
   const quickTake  = report?.quickTake ?? []
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] flex flex-col">
+    <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
 
       {/* SearchBar — transitions from vertically centered to top */}
       <div
+        className="pulse-content"
         style={{
           paddingTop: isIdle ? 'calc(50vh - 100px)' : '48px',
           transition: 'padding-top 0.5s ease',
@@ -40,18 +41,18 @@ export default function App() {
 
       {/* Result sections */}
       {hasResult && (
-        <div className="flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8">
+        <div className="pulse-content flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8">
 
           {/* AgentGraph — stable render, no animation to avoid replay on state transitions */}
-          <div>
-            <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-3 font-medium">
+          <div className="drama-module">
+            <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-3 font-medium">
               Agent Execution
             </p>
             <AgentGraph agentEvents={agentEvents} runStatus={status} />
           </div>
 
           {/* ConfidenceGauge + LiveOutput row — appears on loading */}
-          <div className="animate-fade-up flex flex-col sm:flex-row gap-4 md:gap-6" style={{ animationDelay: '100ms' }}>
+          <div className="drama-module animate-fade-up flex flex-col sm:flex-row gap-4 md:gap-6" style={{ animationDelay: '100ms' }}>
             <DramaScoreboard
               metrics={metrics}
               confidenceScore={report?.confidenceScore ?? null}
@@ -64,12 +65,12 @@ export default function App() {
           </div>
 
           {(quickTake.length > 0 || isLoading) && (
-            <div className="animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4" style={{ animationDelay: '140ms' }}>
-              <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
+            <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4" style={{ animationDelay: '140ms' }}>
+              <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
               {quickTake.length > 0 ? (
                 <ul className="space-y-1.5">
                   {quickTake.slice(0, 3).map((line, i) => (
-                    <li key={i} className="text-sm text-[#d1d5db] leading-relaxed flex items-start gap-2">
+                    <li key={i} className="stagger-1 text-sm text-[#d1d5db] leading-relaxed flex items-start gap-2">
                       <span className="text-[#3b82f6] mt-1">•</span>
                       <span>{line}</span>
                     </li>

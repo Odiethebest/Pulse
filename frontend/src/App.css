@@ -1,0 +1,50 @@
+.pulse-shell {
+  position: relative;
+}
+
+.pulse-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 420px at 10% -10%, rgba(59, 130, 246, 0.09), transparent 60%),
+    radial-gradient(700px 360px at 90% 0%, rgba(239, 68, 68, 0.08), transparent 55%);
+  opacity: 0.6;
+  z-index: 0;
+}
+
+.pulse-content {
+  position: relative;
+  z-index: 1;
+}
+
+.drama-module {
+  position: relative;
+  overflow: hidden;
+}
+
+.drama-module::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 120%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
+  pointer-events: none;
+  animation: module-sweep 2.8s ease-out 1;
+}
+
+@keyframes module-sweep {
+  from { left: -120%; }
+  to   { left: 140%; }
+}
+
+.stage-title {
+  letter-spacing: 0.16em;
+}
+
+.stagger-1 { animation-delay: 40ms; }
+.stagger-2 { animation-delay: 80ms; }
+.stagger-3 { animation-delay: 120ms; }
