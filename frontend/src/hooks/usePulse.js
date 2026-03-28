@@ -15,6 +15,12 @@ export function usePulse() {
   const [agentEvents, setAgentEvents] = useState([])
   const [report,      setReport]      = useState(null)
   const [liveText,    setLiveText]    = useState('')
+  const [metrics,     setMetrics]     = useState({
+    drama: null,
+    polarization: null,
+    heat: null,
+    flipRisk: null,
+  })
 
   const closeSSE = useRef(null)
 
@@ -24,6 +30,12 @@ export function usePulse() {
     setAgentEvents([])
     setReport(null)
     setLiveText('')
+    setMetrics({
+      drama: null,
+      polarization: null,
+      heat: null,
+      flipRisk: null,
+    })
 
     // Close any lingering SSE from a previous run
     closeSSE.current?.()
@@ -50,6 +62,12 @@ export function usePulse() {
       // 5. Success
       console.log('[usePulse] analyze complete', result)
       setReport(result)
+      setMetrics({
+        drama: result?.dramaScore ?? null,
+        polarization: result?.polarizationScore ?? null,
+        heat: result?.heatScore ?? null,
+        flipRisk: result?.flipRiskScore ?? null,
+      })
       setStatus('complete')
     } catch (err) {
       // 6. Network / server error
@@ -62,5 +80,5 @@ export function usePulse() {
     }
   }, [])
 
-  return { status, agentEvents, report, liveText, submit }
+  return { status, agentEvents, report, liveText, metrics, submit }
 }
