@@ -7,5 +7,25 @@ public record CriticResult(
         List<String> biasConcerns,
         boolean exceedsDataScope,
         int confidenceScore,
-        String revisionSuggestions
-) {}
+        String revisionSuggestions,
+        List<String> evidenceGaps,
+        List<String> deltaHighlights
+) {
+    public CriticResult(
+            List<String> unsupportedClaims,
+            List<String> biasConcerns,
+            boolean exceedsDataScope,
+            int confidenceScore,
+            String revisionSuggestions
+    ) {
+        this(
+                unsupportedClaims,
+                biasConcerns,
+                exceedsDataScope,
+                confidenceScore,
+                revisionSuggestions,
+                null,
+                null
+        );
+    }
+}

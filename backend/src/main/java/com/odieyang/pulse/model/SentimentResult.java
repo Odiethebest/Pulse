@@ -8,5 +8,27 @@ public record SentimentResult(
         double negativeRatio,
         double neutralRatio,
         List<String> mainControversies,
-        List<Quote> representativeQuotes
-) {}
+        List<Quote> representativeQuotes,
+        CampDistribution stanceDistribution,
+        List<ControversyTopic> aspectSentiments
+) {
+    public SentimentResult(
+            String platform,
+            double positiveRatio,
+            double negativeRatio,
+            double neutralRatio,
+            List<String> mainControversies,
+            List<Quote> representativeQuotes
+    ) {
+        this(
+                platform,
+                positiveRatio,
+                negativeRatio,
+                neutralRatio,
+                mainControversies,
+                representativeQuotes,
+                null,
+                null
+        );
+    }
+}
