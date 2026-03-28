@@ -11,6 +11,12 @@ const SENTIMENT = {
   neutral:  { label: 'Neutral',  color: '#6b7280', bg: 'rgba(107,114,128,0.08)' },
 }
 
+const CAMP = {
+  support: { label: 'Support', color: '#16a34a', bg: 'rgba(22,163,74,0.1)' },
+  oppose:  { label: 'Oppose',  color: '#dc2626', bg: 'rgba(220,38,38,0.1)' },
+  neutral: { label: 'Neutral', color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
+}
+
 function displayUrl(url) {
   try {
     const { hostname, pathname } = new URL(url)
@@ -48,6 +54,10 @@ function QuoteCard({ quote, platform, index }) {
 
   const ps = PLATFORM[platform]  ?? PLATFORM.Reddit
   const ss = SENTIMENT[quote.sentiment?.toLowerCase()] ?? SENTIMENT.neutral
+  const cs = CAMP[quote.camp?.toLowerCase?.() || quote.camp] ?? CAMP.neutral
+  const evidence = typeof quote.evidenceWeight === 'number'
+    ? Math.max(0, Math.min(1, quote.evidenceWeight))
+    : 0.5
   const isLong = quote.text?.length > 160
 
   return (
@@ -59,6 +69,10 @@ function QuoteCard({ quote, platform, index }) {
       <div className="flex items-center gap-2 flex-wrap">
         <Badge color={ps.color} bg={ps.bg}>{platform}</Badge>
         <Badge color={ss.color} bg={ss.bg}>{ss.label}</Badge>
+        <Badge color={cs.color} bg={cs.bg}>{cs.label}</Badge>
+        <Badge color="#9ca3af" bg="rgba(156,163,175,0.08)">
+          Evidence {Math.round(evidence * 100)}
+        </Badge>
       </div>
 
       {/* Quote text */}
