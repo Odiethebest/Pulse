@@ -34,6 +34,7 @@ public class SynthesisAgent {
             - Every core claim in Lead and Frontline Clash must include at least one evidence tag from the Evidence Bank, for example [Q1] [Q2].
             - Do not use vague filler such as "overall", "many people believe", or "it sparked broad discussion" without specifics.
             - Use only supplied evidence tags and do not invent new tags.
+            - Never output raw data blocks or labels such as "EVIDENCE BANK", "REDDIT POSTS", or "TWITTER/X POSTS".
             - Do not include any section outside this template.
             """;
 
@@ -133,15 +134,14 @@ public class SynthesisAgent {
         }
         sb.append("\n");
 
+        sb.append("=== PLATFORM DIFFERENCE CLUE ===\n");
+        sb.append("Reddit main focus: %s\n".formatted(topControversy(redditSentiment)));
+        sb.append("Twitter/X main focus: %s\n".formatted(topControversy(twitterSentiment)));
+        sb.append("\n");
+
         sb.append("=== EVIDENCE BANK (use [Qn] tags in claims) ===\n");
         appendEvidenceBank(sb, redditSentiment, twitterSentiment);
         sb.append("\n");
-
-        sb.append("=== REDDIT POSTS ===\n");
-        appendPosts(sb, reddit);
-
-        sb.append("=== TWITTER/X POSTS ===\n");
-        appendPosts(sb, twitter);
 
         if (critique != null) {
             sb.append("=== CRITIC FEEDBACK ===\n");
@@ -149,13 +149,6 @@ public class SynthesisAgent {
         }
 
         return sb.toString();
-    }
-
-    private void appendPosts(StringBuilder sb, RawPosts rawPosts) {
-        int i = 1;
-        for (var post : rawPosts.posts()) {
-            sb.append("[%d] %s\n%s\n\n".formatted(i++, post.title(), post.snippet()));
-        }
     }
 
     private void appendEvidenceBank(StringBuilder sb, SentimentResult redditSentiment, SentimentResult twitterSentiment) {
@@ -192,5 +185,15 @@ public class SynthesisAgent {
             return "0%";
         }
         return "%.0f%%".formatted(value * 100);
+    }
+
+    private String topControversy(SentimentResult sentimentResult) {
+        if (sentimentResult == null
+                || sentimentResult.mainControversies() == null
+                || sentimentResult.mainControversies().isEmpty()) {
+            return "general narrative";
+        }
+        String value = sentimentResult.mainControversies().getFirst();
+        return value == null || value.isBlank() ? "general narrative" : value;
     }
 }

@@ -141,6 +141,17 @@ public class PulseOrchestrator {
                 controversyTopics,
                 flipSignals
         );
+        synthesis = finalizeSynthesis(
+                synthesis,
+                topic,
+                quickTake,
+                controversyTopics,
+                flipSignals,
+                campDistribution,
+                heatScore,
+                flipRiskScore,
+                platformDiff
+        );
 
         log.info("Analysis complete for '{}', confidence={}, debateTriggered={}",
                 topic, critique.confidenceScore(), debateTriggered);
@@ -215,10 +226,25 @@ public class PulseOrchestrator {
     }
 
     private String buildPlatformDiff(SentimentResult reddit, SentimentResult twitter) {
+        String redditTop = topControversy(reddit);
+        String twitterTop = topControversy(twitter);
         double posDiff = reddit.positiveRatio() - twitter.positiveRatio();
         double negDiff = reddit.negativeRatio() - twitter.negativeRatio();
-        return "Reddit vs Twitter/X — Positive diff: %+.0f%%, Negative diff: %+.0f%%".formatted(
-                posDiff * 100, negDiff * 100);
+        String sentimentDiff = "positive %+.0f%%, negative %+.0f%%".formatted(posDiff * 100, negDiff * 100);
+
+        if (!redditTop.equalsIgnoreCase(twitterTop)) {
+            return "Platform mismatch: Reddit debates \"%s\", while Twitter/X fixates on \"%s\" (%s)."
+                    .formatted(redditTop, twitterTop, sentimentDiff);
+        }
+        return "Both platforms center on \"%s\" (%s).".formatted(redditTop, sentimentDiff);
+    }
+
+    private String topControversy(SentimentResult sentiment) {
+        if (sentiment == null || sentiment.mainControversies() == null || sentiment.mainControversies().isEmpty()) {
+            return "general narrative";
+        }
+        String top = sentiment.mainControversies().getFirst();
+        return top == null || top.isBlank() ? "general narrative" : top;
     }
 
     private int computePolarization(CampDistribution campDistribution) {
@@ -299,26 +325,50 @@ public class PulseOrchestrator {
             SentimentResult twitterSentiment
     ) {
         List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
+        int supportPct = (int) Math.round(nz(campDistribution.support()) * 100);
+        int opposePct = (int) Math.round(nz(campDistribution.oppose()) * 100);
+        int neutralPct = (int) Math.round(nz(campDistribution.neutral()) * 100);
         String mainAspect = topics.isEmpty() ? "overall narrative clash" : topics.getFirst().aspect();
-        String campLine = "Support is %.0f%% vs oppose %.0f%%, with %.0f%% neutral watchers on \"%s\".".formatted(
-                nz(campDistribution.support()) * 100,
-                nz(campDistribution.oppose()) * 100,
-                nz(campDistribution.neutral()) * 100,
-                topic
-        );
-        String heatLine = "The hottest frontline is %s, and the fight intensity sits at %d/100.".formatted(
+        String campLine = "The fight around \"%s\" is split: support %d%%, oppose %d%%, and %d%% remain on-the-fence watchers."
+                .formatted(topic, supportPct, opposePct, neutralPct);
+        String heatLine = "The main battlefield is %s, with heat at %d/100, which signals %s."
+                .formatted(
                 mainAspect,
-                heatScore
+                heatScore,
+                describeHeat(heatScore)
         );
-        String flipLine = "Narrative flip risk is %d/100%s.".formatted(
+        String flipLine = "Flip risk is %d/100 (%s). %s%s"
+                .formatted(
                 flipRiskScore,
-                debateTriggered ? ", with critic revision already attempted" : ""
+                describeFlipRisk(flipRiskScore),
+                buildPlatformDiff(redditSentiment, twitterSentiment),
+                debateTriggered ? " Critic revision has already been applied." : ""
         );
         return List.of(
                 new ClaimEvidenceLink("C1", campLine, pickEvidenceUrls(evidenceUrls, 0, 2)),
                 new ClaimEvidenceLink("C2", heatLine, pickEvidenceUrls(evidenceUrls, 1, 2)),
                 new ClaimEvidenceLink("C3", flipLine, pickEvidenceUrls(evidenceUrls, 2, 2))
         );
+    }
+
+    private String describeHeat(int heatScore) {
+        if (heatScore >= 70) {
+            return "an actively escalating conflict";
+        }
+        if (heatScore >= 40) {
+            return "a sustained but controllable confrontation";
+        }
+        return "a low-temperature disagreement that could still flare up";
+    }
+
+    private String describeFlipRisk(int flipRiskScore) {
+        if (flipRiskScore >= 70) {
+            return "the narrative is near a turning point";
+        }
+        if (flipRiskScore >= 40) {
+            return "new evidence could still move sentiment";
+        }
+        return "the current storyline is relatively stable";
     }
 
     private List<String> buildQuickTake(List<ClaimEvidenceLink> claimEvidenceMap) {
@@ -329,6 +379,113 @@ public class PulseOrchestrator {
                     return refs.isBlank() ? link.claim() : link.claim() + " " + refs;
                 })
                 .toList();
+    }
+
+    private String finalizeSynthesis(
+            String synthesis,
+            String topic,
+            List<String> quickTake,
+            List<ControversyTopic> controversyTopics,
+            List<FlipSignal> flipSignals,
+            CampDistribution campDistribution,
+            int heatScore,
+            int flipRiskScore,
+            String platformDiff
+    ) {
+        if (isValidReporterSynthesis(synthesis)) {
+            return synthesis;
+        }
+        log.warn("Synthesis format is weak or contains raw dump markers, using deterministic reporter fallback.");
+        return buildReporterFallback(
+                topic,
+                quickTake,
+                controversyTopics,
+                flipSignals,
+                campDistribution,
+                heatScore,
+                flipRiskScore,
+                platformDiff
+        );
+    }
+
+    private boolean isValidReporterSynthesis(String synthesis) {
+        if (synthesis == null || synthesis.isBlank()) {
+            return false;
+        }
+        List<String> required = List.of(
+                "## Lead",
+                "## Frontline Clash",
+                "## Top Controversies",
+                "## Flip Risk Watch",
+                "## Why It Matters",
+                "## Reporter Note"
+        );
+        boolean hasAllSections = required.stream().allMatch(synthesis::contains);
+        if (!hasAllSections) {
+            return false;
+        }
+
+        String lower = synthesis.toLowerCase();
+        return !(lower.contains("=== evidence bank")
+                || lower.contains("=== reddit posts")
+                || lower.contains("=== twitter/x posts")
+                || lower.contains("=== source:"));
+    }
+
+    private String buildReporterFallback(
+            String topic,
+            List<String> quickTake,
+            List<ControversyTopic> controversyTopics,
+            List<FlipSignal> flipSignals,
+            CampDistribution campDistribution,
+            int heatScore,
+            int flipRiskScore,
+            String platformDiff
+    ) {
+        String lead = quickTake.isEmpty()
+                ? "The conversation around \"%s\" is splitting into clear camps with rising pressure.".formatted(topic)
+                : quickTake.getFirst();
+
+        String frontline = "Support stands at %.0f%% versus %.0f%% opposition, while %.0f%% are still undecided observers."
+                .formatted(
+                        nz(campDistribution.support()) * 100,
+                        nz(campDistribution.oppose()) * 100,
+                        nz(campDistribution.neutral()) * 100
+                );
+        String controversies = controversyTopics.isEmpty()
+                ? "1. General narrative clash remains the main fight."
+                : controversyTopics.stream()
+                .limit(3)
+                .map(t -> "%s (%d/100): %s".formatted(
+                        t.aspect() == null ? "General" : t.aspect(),
+                        clampScore(t.heat() == null ? 50 : t.heat()),
+                        t.summary() == null ? "No extra context." : t.summary()))
+                .reduce((a, b) -> a + "\n" + b)
+                .orElse("1. General narrative clash remains the main fight.");
+        String flipWatch = "Flip risk is %d/100, meaning %s.".formatted(flipRiskScore, describeFlipRisk(flipRiskScore));
+        String whyItMatters = "With heat at %d/100, this discussion can quickly shape public perception and spill into mainstream narratives."
+                .formatted(heatScore);
+        String reporterNote = platformDiff + " Evidence is sampled from cross-platform public posts and should be read as directional, not universal.";
+
+        return """
+                ## Lead
+                %s
+
+                ## Frontline Clash
+                %s
+
+                ## Top Controversies
+                %s
+
+                ## Flip Risk Watch
+                %s
+
+                ## Why It Matters
+                %s
+
+                ## Reporter Note
+                %s
+                """.formatted(lead, frontline, controversies, flipWatch, whyItMatters, reporterNote);
     }
 
     private List<String> collectEvidenceUrls(SentimentResult redditSentiment, SentimentResult twitterSentiment) {

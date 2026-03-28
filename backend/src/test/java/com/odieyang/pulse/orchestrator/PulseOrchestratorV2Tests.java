@@ -47,7 +47,8 @@ class PulseOrchestratorV2Tests {
 
         assertEquals("Parallel Topic", report.topic());
         assertTrue(report.debateTriggered());
-        assertEquals("revised synthesis", report.synthesis());
+        assertTrue(report.synthesis().contains("## Lead"));
+        assertTrue(report.synthesis().contains("## Reporter Note"));
         assertEquals(72, report.heatScore());
         assertEquals(58, report.flipRiskScore());
         assertEquals(66, report.dramaScore());
@@ -106,7 +107,8 @@ class PulseOrchestratorV2Tests {
 
         PulseReport report = orchestrator.analyze("Revision fallback topic");
 
-        assertEquals("initial synthesis", report.synthesis());
+        assertTrue(report.synthesis().contains("## Lead"));
+        assertTrue(report.synthesis().contains("## Flip Risk Watch"));
         assertFalse(report.debateTriggered(),
                 "Should not claim revision happened when revision synthesis failed");
         assertEquals(45, report.confidenceScore());
@@ -136,7 +138,8 @@ class PulseOrchestratorV2Tests {
         PulseReport report = orchestrator.analyze("Quality gate topic");
 
         assertTrue(report.debateTriggered(), "Quality gate rewrite should mark debateTriggered");
-        assertEquals("revised synthesis", report.synthesis());
+        assertTrue(report.synthesis().contains("## Lead"));
+        assertTrue(report.synthesis().contains("## Why It Matters"));
     }
 
     private PulseOrchestrator buildOrchestrator(
