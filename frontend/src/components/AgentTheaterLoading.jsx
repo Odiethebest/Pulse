@@ -1,6 +1,6 @@
 import { Check, Circle, X } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const AGENT_STEPS = [
   {
@@ -111,11 +111,11 @@ function NodeDot({ state }) {
     return (
       <div className="relative h-5 w-5 flex items-center justify-center">
         <motion.div
-          className="absolute inset-0 rounded-full border border-indigo-400/70"
-          animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute inset-0 rounded-full border border-amber-400/70"
+          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
         />
-        <div className="h-2.5 w-2.5 rounded-full bg-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.9)]" />
+        <div className="h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
       </div>
     )
   }
@@ -145,11 +145,50 @@ export default function AgentTheaterLoading({
     [safeEvents]
   )
   const logRef = useRef(null)
+  const previousStatesRef = useRef([])
+  const rippleTimeoutsRef = useRef([])
+  const [activeRippleLines, setActiveRippleLines] = useState([])
 
   useEffect(() => {
     if (!logRef.current) return
     logRef.current.scrollTop = logRef.current.scrollHeight
   }, [safeEvents.length, liveText])
+
+  useEffect(() => {
+    const previous = previousStatesRef.current
+    const current = nodes.map((node) => node.state)
+    const triggeredLines = []
+
+    nodes.forEach((node, index) => {
+      const wasPending = previous[index] === 'pending' || previous[index] === undefined
+      const nowRunning = node.state === 'running'
+      if (wasPending && nowRunning && index > 0) {
+        triggeredLines.push(index - 1)
+      }
+    })
+
+    if (triggeredLines.length > 0) {
+      setActiveRippleLines((existing) => {
+        const merged = new Set(existing)
+        triggeredLines.forEach((lineIndex) => merged.add(lineIndex))
+        return Array.from(merged)
+      })
+
+      triggeredLines.forEach((lineIndex) => {
+        const timeoutId = setTimeout(() => {
+          setActiveRippleLines((existing) => existing.filter((value) => value !== lineIndex))
+        }, 320)
+        rippleTimeoutsRef.current.push(timeoutId)
+      })
+    }
+
+    previousStatesRef.current = current
+  }, [nodes])
+
+  useEffect(() => () => {
+    rippleTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
+    rippleTimeoutsRef.current = []
+  }, [])
 
   const completedCount = nodes.filter((node) => node.state === 'completed').length
   const runningCount = nodes.filter((node) => node.state === 'running').length
@@ -193,17 +232,39 @@ export default function AgentTheaterLoading({
                     : node.state === 'failed'
                       ? 'bg-rose-400/60'
                       : 'bg-zinc-700/70'
+                const runningShell = node.state === 'running'
+                  ? 'shadow-[inset_0_1px_0_rgba(255,191,0,0.2)] bg-amber-500/5 border border-amber-500/20'
+                  : 'border border-transparent'
 
                 return (
-                  <div key={node.id} className="relative py-1.5" style={{ paddingLeft: `${node.depth * 14}px` }}>
+                  <motion.div
+                    key={node.id}
+                    className="relative py-1.5"
+                    style={{ paddingLeft: `${node.depth * 14}px` }}
+                    layout="position"
+                  >
                     <div className="flex items-start gap-3 min-w-0">
                       <div className="flex flex-col items-center shrink-0">
                         <NodeDot state={node.state} />
                         {index < nodes.length - 1 && (
-                          <span className={`mt-1 h-6 w-px ${lineTone}`} />
+                          <div className="mt-1 relative h-6 w-px overflow-visible">
+                            <span className={`absolute inset-0 ${lineTone}`} />
+                            {activeRippleLines.includes(index) && (
+                              <motion.span
+                                className="absolute left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.9)]"
+                                initial={{ y: 0, opacity: 0.5 }}
+                                animate={{ y: 24, opacity: [0.5, 1, 0] }}
+                                transition={{ duration: 0.3, ease: 'easeOut' }}
+                              />
+                            )}
+                          </div>
                         )}
                       </div>
-                      <div className="min-w-0">
+                      <motion.div
+                        className={`min-w-0 rounded-lg px-2 py-1.5 ${runningShell}`}
+                        animate={node.state === 'running' ? { opacity: [0.7, 1, 0.7] } : { opacity: 1 }}
+                        transition={node.state === 'running' ? { duration: 3, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
+                      >
                         <p className="text-sm text-zinc-200 break-words whitespace-normal">{node.label}</p>
                         <p className="text-[11px] text-zinc-500 mt-0.5 break-words whitespace-normal">
                           {node.state === 'completed' && node.duration !== null
@@ -214,9 +275,9 @@ export default function AgentTheaterLoading({
                                 ? 'Failed'
                                 : 'Pending'}
                         </p>
-                      </div>
+                      </motion.div>
                     </div>
-                  </div>
+                  </motion.div>
                 )
               })}
             </div>

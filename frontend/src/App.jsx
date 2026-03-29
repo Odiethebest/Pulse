@@ -90,6 +90,14 @@ export default function App() {
         : 'Run another query to generate a new public opinion snapshot.')
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
+      {showLoadingTheater && (
+        <motion.div
+          className="pointer-events-none fixed inset-0 z-[2] bg-[radial-gradient(1000px_520px_at_50%_18%,rgba(99,102,241,0.18),transparent_72%)]"
+          animate={{ opacity: [0.03, 0.08, 0.03] }}
+          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      )}
+
       {!isIdle && (
         <div className="pulse-topbar">
           <div className="pulse-topbar-inner">
