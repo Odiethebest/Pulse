@@ -1,68 +1,18 @@
 import { Check, Circle, X } from 'lucide-react'
-import { motion } from 'framer-motion'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useMemo, useRef } from 'react'
 
 const AGENT_STEPS = [
-  {
-    id: 'queryPlanner',
-    label: 'Query Planner',
-    depth: 0,
-    match: (event) => /queryplanner/i.test(event.agentName || ''),
-  },
-  {
-    id: 'reddit',
-    label: 'Reddit Collector',
-    depth: 1,
-    match: (event) => /reddit/i.test(event.agentName || '') && !/sentiment/i.test(event.agentName || ''),
-  },
-  {
-    id: 'twitter',
-    label: 'Twitter Collector',
-    depth: 1,
-    match: (event) => /twitter/i.test(event.agentName || '') && !/sentiment/i.test(event.agentName || ''),
-  },
-  {
-    id: 'sentiment',
-    label: 'Sentiment Analyzer',
-    depth: 2,
-    match: (event) => /sentiment/i.test(event.agentName || ''),
-  },
-  {
-    id: 'stance',
-    label: 'Stance Classifier',
-    depth: 2,
-    match: (event) => /stance/i.test(event.agentName || ''),
-  },
-  {
-    id: 'conflict',
-    label: 'Conflict Mapper',
-    depth: 2,
-    match: (event) => /conflict/i.test(event.agentName || ''),
-  },
-  {
-    id: 'aspect',
-    label: 'Aspect Extractor',
-    depth: 2,
-    match: (event) => /aspect/i.test(event.agentName || ''),
-  },
-  {
-    id: 'flipRisk',
-    label: 'Flip Risk Estimator',
-    depth: 2,
-    match: (event) => /fliprisk/i.test(event.agentName || ''),
-  },
-  {
-    id: 'synthesis',
-    label: 'Synthesis Reporter',
-    depth: 0,
-    match: (event) => /synthesis/i.test(event.agentName || ''),
-  },
-  {
-    id: 'critic',
-    label: 'Critic Agent',
-    depth: 0,
-    match: (event) => /critic/i.test(event.agentName || ''),
-  },
+  { id: 'queryPlanner', label: 'Query Planner', depth: 0, match: (e) => /queryplanner/i.test(e.agentName || '') },
+  { id: 'reddit', label: 'Reddit Collector', depth: 1, match: (e) => /reddit/i.test(e.agentName || '') && !/sentiment/i.test(e.agentName || '') },
+  { id: 'twitter', label: 'Twitter Collector', depth: 1, match: (e) => /twitter/i.test(e.agentName || '') && !/sentiment/i.test(e.agentName || '') },
+  { id: 'sentiment', label: 'Sentiment Analyzer', depth: 2, match: (e) => /sentiment/i.test(e.agentName || '') },
+  { id: 'stance', label: 'Stance Classifier', depth: 2, match: (e) => /stance/i.test(e.agentName || '') },
+  { id: 'conflict', label: 'Conflict Mapper', depth: 2, match: (e) => /conflict/i.test(e.agentName || '') },
+  { id: 'aspect', label: 'Aspect Extractor', depth: 2, match: (e) => /aspect/i.test(e.agentName || '') },
+  { id: 'flipRisk', label: 'Flip Risk Estimator', depth: 2, match: (e) => /fliprisk/i.test(e.agentName || '') },
+  { id: 'synthesis', label: 'Synthesis Reporter', depth: 0, match: (e) => /synthesis/i.test(e.agentName || '') },
+  { id: 'critic', label: 'Critic Agent', depth: 0, match: (e) => /critic/i.test(e.agentName || '') },
 ]
 
 function resolveNodeState(node, events) {
@@ -86,45 +36,70 @@ function formatClock(value) {
 
 function statusTone(status) {
   if (status === 'COMPLETED') return 'text-emerald-300'
-  if (status === 'FAILED') return 'text-rose-300'
+  if (status === 'FAILED') return 'text-zinc-400'
   return 'text-indigo-300'
 }
 
 function NodeDot({ state }) {
+  if (state === 'running') {
+    return (
+      <div className="relative flex items-center justify-center w-4 h-4">
+        <motion.div
+          className="absolute inset-0 rounded-full border border-indigo-400/50"
+          animate={{ scale: [1, 2.5], opacity: [0.8, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
+        />
+        <div className="w-2 h-2 rounded-full bg-indigo-500 z-10" />
+      </div>
+    )
+  }
+
   if (state === 'completed') {
     return (
-      <div className="h-5 w-5 rounded-full bg-emerald-500/90 border border-emerald-300/60 flex items-center justify-center">
-        <Check size={12} className="text-[#08110b]" strokeWidth={3} />
+      <div className="relative flex items-center justify-center w-4 h-4">
+        <div className="absolute inset-0 rounded-full border border-emerald-400/40 bg-emerald-500/20" />
+        <Check size={11} className="text-emerald-300 z-10" strokeWidth={2.5} />
       </div>
     )
   }
 
   if (state === 'failed') {
     return (
-      <div className="h-5 w-5 rounded-full bg-rose-500/85 border border-rose-300/60 flex items-center justify-center">
-        <X size={11} className="text-[#18090b]" strokeWidth={3} />
-      </div>
-    )
-  }
-
-  if (state === 'running') {
-    return (
-      <div className="relative h-5 w-5 flex items-center justify-center">
-        <motion.div
-          className="absolute inset-0 rounded-full border border-amber-400/70"
-          animate={{ scale: [1, 1.15, 1], opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <div className="h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
+      <div className="relative flex items-center justify-center w-4 h-4">
+        <div className="absolute inset-0 rounded-full border border-zinc-500/50 bg-zinc-600/20" />
+        <X size={11} className="text-zinc-300 z-10" strokeWidth={2.5} />
       </div>
     )
   }
 
   return (
-    <div className="h-5 w-5 rounded-full border border-zinc-600 bg-transparent flex items-center justify-center">
-      <Circle size={7} className="text-zinc-600" fill="currentColor" />
+    <div className="relative flex items-center justify-center w-4 h-4">
+      <div className="absolute inset-0 rounded-full border border-zinc-600/70 bg-transparent" />
+      <Circle size={6} className="text-zinc-600 z-10" fill="currentColor" />
     </div>
   )
+}
+
+function ConnectorLine({ nextState }) {
+  if (nextState === 'running') {
+    return (
+      <motion.span
+        className="absolute inset-0 bg-indigo-500/30"
+        animate={{ opacity: [0.2, 0.7, 0.2] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+      />
+    )
+  }
+
+  if (nextState === 'completed') {
+    return <span className="absolute inset-0 bg-emerald-500/30" />
+  }
+
+  if (nextState === 'failed') {
+    return <span className="absolute inset-0 bg-zinc-500/35" />
+  }
+
+  return <span className="absolute inset-0 bg-zinc-700/70" />
 }
 
 export default function AgentTheaterLoading({
@@ -145,50 +120,14 @@ export default function AgentTheaterLoading({
     [safeEvents]
   )
   const logRef = useRef(null)
-  const previousStatesRef = useRef([])
-  const rippleTimeoutsRef = useRef([])
-  const [activeRippleLines, setActiveRippleLines] = useState([])
 
   useEffect(() => {
     if (!logRef.current) return
-    logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [safeEvents.length, liveText])
-
-  useEffect(() => {
-    const previous = previousStatesRef.current
-    const current = nodes.map((node) => node.state)
-    const triggeredLines = []
-
-    nodes.forEach((node, index) => {
-      const wasPending = previous[index] === 'pending' || previous[index] === undefined
-      const nowRunning = node.state === 'running'
-      if (wasPending && nowRunning && index > 0) {
-        triggeredLines.push(index - 1)
-      }
+    const target = logRef.current
+    requestAnimationFrame(() => {
+      target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' })
     })
-
-    if (triggeredLines.length > 0) {
-      setActiveRippleLines((existing) => {
-        const merged = new Set(existing)
-        triggeredLines.forEach((lineIndex) => merged.add(lineIndex))
-        return Array.from(merged)
-      })
-
-      triggeredLines.forEach((lineIndex) => {
-        const timeoutId = setTimeout(() => {
-          setActiveRippleLines((existing) => existing.filter((value) => value !== lineIndex))
-        }, 320)
-        rippleTimeoutsRef.current.push(timeoutId)
-      })
-    }
-
-    previousStatesRef.current = current
-  }, [nodes])
-
-  useEffect(() => () => {
-    rippleTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
-    rippleTimeoutsRef.current = []
-  }, [])
+  }, [safeEvents.length, liveText])
 
   const completedCount = nodes.filter((node) => node.state === 'completed').length
   const runningCount = nodes.filter((node) => node.state === 'running').length
@@ -200,9 +139,15 @@ export default function AgentTheaterLoading({
       initial={{ opacity: 0, y: 10, filter: 'blur(2px)' }}
       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
       exit={{ opacity: 0, filter: 'blur(10px)', transition: { duration: 0.6, ease: 'easeOut' } }}
-      className="w-full max-w-7xl mx-auto min-h-[60vh] flex flex-col justify-center mt-12"
+      className="relative w-full max-w-7xl mx-auto min-h-[60vh] flex flex-col justify-center mt-12"
     >
-      <div className="w-full border border-zinc-800/80 rounded-2xl bg-zinc-950/45 shadow-[0_30px_80px_rgba(0,0,0,0.35)] overflow-hidden">
+      <motion.div
+        className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-900/10 via-zinc-950/0 to-transparent blur-3xl"
+        animate={{ opacity: [0.4, 0.8, 0.4] }}
+        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      <div className="relative z-10 w-full border border-zinc-800/80 rounded-2xl bg-zinc-950/45 overflow-hidden">
         <div className="px-7 py-5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-zinc-500 text-xs uppercase tracking-[0.16em]">Pulse Command Center</p>
@@ -213,7 +158,7 @@ export default function AgentTheaterLoading({
           <div className="flex items-center gap-2 text-xs flex-wrap">
             <span className="rounded-full border border-zinc-700 px-2.5 py-1 text-zinc-400">Done {completedCount}</span>
             <span className="rounded-full border border-indigo-500/30 px-2.5 py-1 text-indigo-300">Running {runningCount}</span>
-            <span className="rounded-full border border-rose-500/30 px-2.5 py-1 text-rose-300">Failed {failedCount}</span>
+            <span className="rounded-full border border-zinc-600/40 px-2.5 py-1 text-zinc-400">Failed {failedCount}</span>
             {allGreen && (
               <span className="rounded-full border border-emerald-500/30 px-2.5 py-1 text-emerald-300">All Systems Green</span>
             )}
@@ -225,15 +170,8 @@ export default function AgentTheaterLoading({
             <p className="text-zinc-500 text-xs uppercase tracking-[0.15em] mb-4">Execution Tree</p>
             <div className="space-y-0">
               {nodes.map((node, index) => {
-                const lineTone = node.state === 'completed'
-                  ? 'bg-emerald-500/70'
-                  : node.state === 'running'
-                    ? 'bg-indigo-400/60'
-                    : node.state === 'failed'
-                      ? 'bg-rose-400/60'
-                      : 'bg-zinc-700/70'
                 const runningShell = node.state === 'running'
-                  ? 'shadow-[inset_0_1px_0_rgba(255,191,0,0.2)] bg-amber-500/5 border border-amber-500/20'
+                  ? 'shadow-[inset_0_1px_0_rgba(99,102,241,0.2)] bg-indigo-500/5 border border-indigo-500/20'
                   : 'border border-transparent'
 
                 return (
@@ -247,22 +185,15 @@ export default function AgentTheaterLoading({
                       <div className="flex flex-col items-center shrink-0">
                         <NodeDot state={node.state} />
                         {index < nodes.length - 1 && (
-                          <div className="mt-1 relative h-6 w-px overflow-visible">
-                            <span className={`absolute inset-0 ${lineTone}`} />
-                            {activeRippleLines.includes(index) && (
-                              <motion.span
-                                className="absolute left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.9)]"
-                                initial={{ y: 0, opacity: 0.5 }}
-                                animate={{ y: 24, opacity: [0.5, 1, 0] }}
-                                transition={{ duration: 0.3, ease: 'easeOut' }}
-                              />
-                            )}
+                          <div className="mt-1 relative h-6 w-px overflow-hidden">
+                            <ConnectorLine nextState={nodes[index + 1].state} />
                           </div>
                         )}
                       </div>
+
                       <motion.div
                         className={`min-w-0 rounded-lg px-2 py-1.5 ${runningShell}`}
-                        animate={node.state === 'running' ? { opacity: [0.7, 1, 0.7] } : { opacity: 1 }}
+                        animate={node.state === 'running' ? { opacity: [0.65, 1, 0.65] } : { opacity: 1 }}
                         transition={node.state === 'running' ? { duration: 3, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
                       >
                         <p className="text-sm text-zinc-200 break-words whitespace-normal">{node.label}</p>
@@ -290,24 +221,41 @@ export default function AgentTheaterLoading({
               className="bg-black rounded-lg p-4 h-[500px] overflow-y-auto font-mono text-sm leading-relaxed border border-zinc-800"
             >
               {safeEvents.length > 0 ? (
-                <div className="space-y-1.5">
-                  {safeEvents.map((event, index) => (
-                    <div key={`${event.agentName}-${event.timestamp}-${index}`} className="flex items-start gap-2 min-w-0">
-                      <span className="text-zinc-600 shrink-0">{formatClock(event.timestamp)}</span>
-                      <span className={`shrink-0 ${statusTone(event.status)}`}>{event.status}</span>
-                      <span className="text-sky-300 shrink-0">{event.agentName}</span>
-                      <span className="text-zinc-300 break-words whitespace-normal min-w-0 flex-1">{event.summary}</span>
-                      {event.durationMs > 0 && (
-                        <span className="text-zinc-500 shrink-0">{event.durationMs}ms</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <AnimatePresence initial={false}>
+                  <div className="space-y-1.5">
+                    {safeEvents.map((event, index) => (
+                      <motion.div
+                        key={`${event.agentName}-${event.timestamp}-${index}`}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex items-start gap-2 min-w-0"
+                      >
+                        <span className="text-zinc-600 shrink-0">{formatClock(event.timestamp)}</span>
+                        <span className={`shrink-0 ${statusTone(event.status)}`}>{event.status}</span>
+                        <span className="text-sky-300 shrink-0">{event.agentName}</span>
+                        <span className="text-zinc-300 break-words whitespace-normal min-w-0 flex-1">{event.summary}</span>
+                        {event.durationMs > 0 && (
+                          <span className="text-zinc-500 shrink-0">{event.durationMs}ms</span>
+                        )}
+                      </motion.div>
+                    ))}
+                  </div>
+                </AnimatePresence>
               ) : (
                 <p className="text-zinc-500 break-words whitespace-normal">
                   Waiting for first agent event...
                 </p>
               )}
+
+              <div className="mt-2 flex items-center text-zinc-500">
+                <span className="text-[11px] tracking-wide uppercase">stream</span>
+                <motion.span
+                  animate={{ opacity: [1, 0, 1] }}
+                  transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                  className="inline-block w-2 h-3 ml-1 bg-indigo-500 rounded-[1px]"
+                />
+              </div>
             </div>
           </div>
         </div>
