@@ -11,7 +11,7 @@ import SynthesisReport from './components/SynthesisReport'
 import CampBattleBoard from './components/CampBattleBoard'
 import GlobalRunStatus from './components/GlobalRunStatus'
 import AgentTraceDrawer from './components/AgentTraceDrawer'
-import LoadingScreen from './components/LoadingScreen'
+import AgentTheaterLoading from './components/AgentTheaterLoading'
 import { buildControversyBoardData } from './lib/controversyMapper'
 import './App.css'
 
@@ -20,22 +20,53 @@ export default function App() {
 
   const { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit } = usePulse()
   const [traceOpen, setTraceOpen] = useState(false)
-  const [loadingSequenceDone, setLoadingSequenceDone] = useState(false)
+  const [showLoadingTheater, setShowLoadingTheater] = useState(false)
+  const [dashboardReady, setDashboardReady] = useState(false)
 
   useEffect(() => {
     setTraceOpen(false)
   }, [runId])
 
   useEffect(() => {
-    setLoadingSequenceDone(false)
-  }, [runId])
+    if (status === 'loading') {
+      setShowLoadingTheater(true)
+      setDashboardReady(false)
+      return
+    }
+
+    if (!showLoadingTheater) {
+      if (status === 'complete' || status === 'error') {
+        setDashboardReady(true)
+      }
+      return
+    }
+
+    const allSystemsGreen =
+      status === 'complete'
+      && agentSummary.running === 0
+      && agentSummary.failed === 0
+      && agentSummary.completed > 0
+    const delay = allSystemsGreen ? 800 : 0
+
+    const timer = setTimeout(() => {
+      setShowLoadingTheater(false)
+    }, delay)
+
+    return () => clearTimeout(timer)
+  }, [
+    status,
+    showLoadingTheater,
+    agentSummary.running,
+    agentSummary.failed,
+    agentSummary.completed,
+  ])
 
   const isIdle     = status === 'idle'
   const isLoading  = status === 'loading'
   const isComplete = status === 'complete'
   const isError    = status === 'error'
-  const hasResult  = isLoading || isComplete || isError
-  const showLoadingScreen = isLoading && !loadingSequenceDone
+  const shouldRenderDashboard = isComplete && dashboardReady && !showLoadingTheater
+  const shouldRenderErrorState = isError && dashboardReady && !showLoadingTheater
   const quickTake  = report?.quickTake ?? []
   const controversyBoardData = useMemo(() => buildControversyBoardData(report), [report])
   const primaryBiasConcern = report?.critique?.biasConcerns?.[0] ?? null
@@ -59,13 +90,21 @@ export default function App() {
         : 'Run another query to generate a new public opinion snapshot.')
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
-      <AnimatePresence>
-        {showLoadingScreen && (
-          <LoadingScreen
-            runId={runId}
-            isLoading={isLoading}
-            onSequenceComplete={() => setLoadingSequenceDone(true)}
-          />
+      <AnimatePresence
+        onExitComplete={() => {
+          if (status === 'complete' || status === 'error') {
+            setDashboardReady(true)
+          }
+        }}
+      >
+        {showLoadingTheater && (
+          <div className="fixed inset-0 z-[35] bg-[#0f0f0f]/88 backdrop-blur-sm px-4 md:px-8 pt-[96px] pb-8 flex items-start justify-center">
+            <AgentTheaterLoading
+              runStatus={status}
+              agentEvents={agentEvents}
+              liveText={liveText}
+            />
+          </div>
         )}
       </AnimatePresence>
 
@@ -92,11 +131,11 @@ export default function App() {
         <SearchBar onSubmit={submit} isLoading={isLoading} />
       </div>
 
-      {/* Result sections */}
-      {hasResult && (
+      {/* Final dashboard after theater dismissal */}
+      {shouldRenderDashboard && (
         <div className="pulse-content flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8">
 
-          <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5 md:p-6" style={{ animationDelay: '20ms' }}>
+          <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5 md:p-6 overflow-hidden" style={{ animationDelay: '20ms' }}>
             <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
               Frontline Verdict
             </p>
@@ -109,11 +148,11 @@ export default function App() {
             <p className="text-xs text-[#6b7280] mt-3 break-words whitespace-normal">Camp split percentages are centralized in Camp Battle below.</p>
           </div>
 
-          <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4" style={{ animationDelay: '80ms' }}>
+          <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden p-4" style={{ animationDelay: '80ms' }}>
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-              <div>
+              <div className="min-w-0">
                 <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-1 font-medium">Execution Trace</p>
-                <p className="text-sm text-[#9ca3af]">Execution details are available in the trace drawer and no longer interrupt report reading.</p>
+                <p className="text-sm text-[#9ca3af] break-words whitespace-normal">Execution details are available in the trace drawer and no longer interrupt report reading.</p>
               </div>
               <button
                 onClick={() => setTraceOpen(true)}
@@ -130,75 +169,65 @@ export default function App() {
               confidenceScore={report?.confidenceScore ?? null}
               debateTriggered={report?.debateTriggered ?? false}
               confidenceBreakdown={report?.confidenceBreakdown ?? null}
-              criticNote={isComplete ? primaryBiasConcern : null}
+              criticNote={primaryBiasConcern}
             />
           </motion.div>
 
-          {(quickTake.length > 0 || isLoading) && (
+          {quickTake.length > 0 && (
             <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden p-4" style={{ animationDelay: '160ms' }}>
               <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
-              {quickTake.length > 0 ? (
-                <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-6">
-                  <div className="space-y-3">
-                    {quickTake.slice(0, 3).map((line, i) => (
-                      <div key={i} className="stagger-1 flex items-start gap-3">
-                        <Sparkles size={15} className="text-indigo-400 mt-0.5 shrink-0" />
-                        <p className="text-zinc-300 leading-relaxed text-sm break-words whitespace-normal min-w-0">{line}</p>
-                      </div>
-                    ))}
-                  </div>
+              <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-6">
+                <div className="space-y-3">
+                  {quickTake.slice(0, 3).map((line, i) => (
+                    <div key={i} className="stagger-1 flex items-start gap-3">
+                      <Sparkles size={15} className="text-indigo-400 mt-0.5 shrink-0" />
+                      <p className="text-zinc-300 leading-relaxed text-sm break-words whitespace-normal min-w-0">{line}</p>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <p className="text-sm text-[#6b7280]">Building recap from ongoing agent outputs...</p>
-              )}
+              </div>
             </div>
           )}
 
-          {/* Error state */}
-          {isError && (
-            <p className="text-[#ef4444] text-sm text-center py-4">
-              Something went wrong. Check the backend and try again.
-            </p>
-          )}
+          <div className="space-y-16 md:space-y-24">
+            <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
+              <SentimentChart
+                redditSentiment={report.redditSentiment}
+                twitterSentiment={report.twitterSentiment}
+                platformDiff={report.platformDiff}
+              />
+            </div>
 
-          {/* Complete-only sections — staggered fade-in */}
-          {isComplete && (
-            <>
-              <div className="space-y-16 md:space-y-24">
-                <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
-                  <SentimentChart
-                    redditSentiment={report.redditSentiment}
-                    twitterSentiment={report.twitterSentiment}
-                    platformDiff={report.platformDiff}
-                  />
-                </div>
+            <motion.div {...revealProps}>
+              <CampBattleBoard
+                campDistribution={report.campDistribution}
+                criticNote={primaryEvidenceGap}
+              />
+            </motion.div>
 
-                <motion.div {...revealProps}>
-                  <CampBattleBoard
-                    campDistribution={report.campDistribution}
-                    criticNote={primaryEvidenceGap}
-                  />
-                </motion.div>
+            <motion.div {...revealProps}>
+              <ControversyAccordion
+                data={controversyBoardData}
+              />
+            </motion.div>
+          </div>
 
-                <motion.div {...revealProps}>
-                  <ControversyAccordion
-                    data={controversyBoardData}
-                  />
-                </motion.div>
-              </div>
+          <motion.div className="mt-8" {...revealProps}>
+            <SynthesisReport
+              synthesis={report.synthesis}
+              critique={report.critique}
+              revisionDelta={report.revisionDelta}
+              revisionAnchors={report.revisionAnchors}
+            />
+          </motion.div>
+        </div>
+      )}
 
-              <motion.div className="mt-8" {...revealProps}>
-                <SynthesisReport
-                  synthesis={report.synthesis}
-                  critique={report.critique}
-                  revisionDelta={report.revisionDelta}
-                  revisionAnchors={report.revisionAnchors}
-                />
-              </motion.div>
-            </>
-          )}
-
-
+      {shouldRenderErrorState && (
+        <div className="pulse-content w-full max-w-3xl mx-auto px-4 md:px-8 mt-8">
+          <p className="text-[#ef4444] text-sm text-center py-4">
+            Something went wrong. Check the backend and try again.
+          </p>
         </div>
       )}
 
