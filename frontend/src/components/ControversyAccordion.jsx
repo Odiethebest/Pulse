@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 const INITIAL_VISIBLE_COUNT = 6
 const LOAD_STEP = 6
+const HIGHLIGHT_SCORE_THRESHOLD = 85
+const GAP_PATTERN = [2, 3]
 
 function heatTone(heat) {
   if (heat >= 70) return 'bg-rose-400'
@@ -38,6 +40,53 @@ function platformIcon(platform) {
 function platformDot(platform) {
   if (platform === 'Twitter') return 'bg-sky-300'
   return 'bg-rose-300'
+}
+
+function isHighlightedQuote(quote) {
+  const score = Number(quote?.evidenceScore)
+  return Number.isFinite(score) && score >= HIGHLIGHT_SCORE_THRESHOLD
+}
+
+function buildRhythmicQuotes(quotes) {
+  if (!Array.isArray(quotes) || quotes.length === 0) return []
+
+  const highlights = []
+  const standard = []
+
+  quotes.forEach((quote) => {
+    if (isHighlightedQuote(quote)) {
+      highlights.push(quote)
+    } else {
+      standard.push(quote)
+    }
+  })
+
+  if (!highlights.length) return [...standard]
+
+  const arranged = [highlights.shift()]
+  let gapIndex = 0
+
+  while (highlights.length > 0) {
+    const preferredGap = GAP_PATTERN[gapIndex % GAP_PATTERN.length]
+    const remainingHighlightsAfterNext = highlights.length - 1
+    const maxGapKeepingSeparation = standard.length - remainingHighlightsAfterNext
+    const gap = standard.length === 0
+      ? 0
+      : Math.max(1, Math.min(preferredGap, maxGapKeepingSeparation > 0 ? maxGapKeepingSeparation : 1))
+
+    for (let i = 0; i < gap && standard.length > 0; i++) {
+      arranged.push(standard.shift())
+    }
+
+    arranged.push(highlights.shift())
+    gapIndex += 1
+  }
+
+  if (standard.length > 0) {
+    arranged.push(...standard)
+  }
+
+  return arranged
 }
 
 function TopicChip({ topic, active, onClick }) {
@@ -83,25 +132,26 @@ function QuoteCard({ quote, topicNameMap }) {
   const platform = normalizePlatform(quote.platform)
   const sentimentClass = sentimentTone(quote.sentiment)
   const evidenceScore = typeof quote.evidenceScore === 'number' ? quote.evidenceScore : null
-  const isHighlight = evidenceScore !== null && evidenceScore >= 85
+  const isHighlight = isHighlightedQuote(quote)
   const tags = (quote.topicIds ?? [])
     .map((id) => topicNameMap.get(id))
     .filter(Boolean)
   const shellClass = isHighlight
-    ? 'relative overflow-hidden bg-zinc-900/60 border-zinc-700/95 shadow-[0_0_26px_rgba(99,102,241,0.14)]'
-    : 'bg-zinc-900/35 border-zinc-800/80'
+    ? 'relative overflow-hidden bg-gradient-to-br from-zinc-800/80 to-zinc-900/40 border border-zinc-700/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:border-zinc-600/50'
+    : 'bg-zinc-900/35 border border-zinc-800/80 hover:border-zinc-700/80'
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16, scale: 0.98 }}
+      layout="position"
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 10, scale: 0.98, transition: { duration: 0.2 } }}
-      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+      transition={{ type: 'spring', stiffness: 260, damping: 20 }}
       className="inline-block w-full break-inside-avoid mb-6"
     >
-      <article className={`border rounded-xl p-5 hover:border-zinc-700 transition-colors ${shellClass}`}>
+      <article className={`rounded-xl p-5 transition-colors ${shellClass}`}>
         {isHighlight && (
-          <div className="mb-3 h-1 rounded-full bg-gradient-to-r from-indigo-500/70 via-violet-400/70 to-cyan-400/60" />
+          <div className="mb-3 h-px rounded-full bg-gradient-to-r from-transparent via-zinc-300/40 to-transparent" />
         )}
 
         <div className="flex items-center justify-between gap-2 mb-3">
@@ -115,8 +165,8 @@ function QuoteCard({ quote, topicNameMap }) {
         </div>
 
         {isHighlight && (
-          <div className="mb-3 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] text-indigo-200 bg-indigo-500/15 border border-indigo-400/30 rounded-full px-2.5 py-1">
-            <Sparkles size={11} />
+          <div className="mb-3 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.14em] text-zinc-300/85 bg-zinc-800/40 border border-zinc-700/60 rounded-full px-2.5 py-1">
+            <Sparkles size={11} className="text-zinc-400" />
             High Signal
           </div>
         )}
@@ -171,11 +221,15 @@ export default function ControversyAccordion({ data }) {
     }),
     [quotes, activeTopic, activePlatforms]
   )
-  const displayedQuotes = useMemo(
-    () => filteredQuotes.slice(0, visibleCount),
-    [filteredQuotes, visibleCount]
+  const rhythmicQuotes = useMemo(
+    () => buildRhythmicQuotes(filteredQuotes),
+    [filteredQuotes]
   )
-  const canLoadMore = visibleCount < filteredQuotes.length
+  const displayedQuotes = useMemo(
+    () => rhythmicQuotes.slice(0, visibleCount),
+    [rhythmicQuotes, visibleCount]
+  )
+  const canLoadMore = visibleCount < rhythmicQuotes.length
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_COUNT)
@@ -193,7 +247,7 @@ export default function ControversyAccordion({ data }) {
 
   return (
     <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 md:p-5">
-      <div className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 pb-4 pt-4 mb-6">
+      <div className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 pb-4 pt-4 mt-16 mb-6">
         <div className="flex items-center gap-2 mb-1.5">
           <Orbit size={14} className="text-zinc-500" />
           <p className="text-xs uppercase tracking-widest text-zinc-500 font-medium">Controversy Lenses</p>
