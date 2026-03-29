@@ -53,39 +53,38 @@ export default function SynthesisReport({
   const [open, setOpen] = useState(false)
   const sections = useMemo(() => parseSections(synthesis), [synthesis])
   const reporterNote = sections['Reporter Note'] || ''
+  const biasConcerns = normalizeList(critique?.biasConcerns || [])
+  const evidenceGaps = normalizeList(critique?.evidenceGaps || [])
+  const unsupportedClaims = normalizeList(critique?.unsupportedClaims || [])
+  const fluffItems = normalizeList(critique?.fluffFindings || [])
   const revisionItems = normalizeList(
     revisionDelta.length ? revisionDelta : (critique?.deltaHighlights || [])
   )
   const anchorNotes = normalizeList(
     (revisionAnchors || []).map((anchor) => `${anchor.title || 'Revision'}: ${anchor.detail || ''}`)
   )
-
-  const groups = useMemo(
+  const hiddenGroups = useMemo(
     () => [
-      reporterNote ? { type: 'markdown', title: 'Reporter Notes', content: reporterNote } : null,
-      (critique?.biasConcerns?.length ?? 0) > 0
-        ? { type: 'list', title: 'Bias Concerns', items: normalizeList(critique.biasConcerns) }
-        : null,
-      (critique?.evidenceGaps?.length ?? 0) > 0
-        ? { type: 'list', title: 'Evidence Gaps', items: normalizeList(critique.evidenceGaps) }
-        : null,
-      (critique?.fluffFindings?.length ?? 0) > 0
-        ? { type: 'list', title: 'Fluff Findings', items: normalizeList(critique.fluffFindings) }
-        : null,
-      (critique?.unsupportedClaims?.length ?? 0) > 0
-        ? { type: 'list', title: 'Unsupported Claims', items: normalizeList(critique.unsupportedClaims) }
-        : null,
       revisionItems.length > 0
-        ? { type: 'list', title: 'Revision Delta', items: revisionItems }
+        ? { title: 'Revision Delta', items: revisionItems }
+        : null,
+      fluffItems.length > 0
+        ? { title: 'Fluff Findings', items: fluffItems }
         : null,
       anchorNotes.length > 0
-        ? { type: 'list', title: 'Revision Anchors', items: anchorNotes }
+        ? { title: 'Revision Anchors', items: anchorNotes }
         : null,
     ].filter(Boolean),
-    [anchorNotes, critique, reporterNote, revisionItems]
+    [anchorNotes, fluffItems, revisionItems]
   )
+  const hasSummary =
+    Boolean(reporterNote)
+    || biasConcerns.length > 0
+    || evidenceGaps.length > 0
+    || unsupportedClaims.length > 0
+    || hiddenGroups.length > 0
 
-  if (groups.length === 0) return null
+  if (!hasSummary) return null
 
   return (
     <section className="border border-zinc-800 rounded-xl bg-zinc-900/30">
@@ -93,48 +92,93 @@ export default function SynthesisReport({
         <span key={anchor.anchorId} id={anchor.anchorId} className="block relative -top-20" />
       ))}
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 md:px-5 py-3.5 text-left hover:bg-zinc-800/40 transition-colors"
-      >
-        <div>
-          <p className="text-zinc-400 text-sm font-medium">Methodology &amp; AI Critic Notes</p>
-          <p className="text-zinc-600 text-xs mt-0.5">Appendix for audit trail, critique, and revision rationale.</p>
-        </div>
-        <ChevronDown
-          size={16}
-          className={`text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
+      <div className="px-4 md:px-5 pt-4 pb-3 border-b border-zinc-800">
+        <p className="font-mono uppercase tracking-widest text-xs text-zinc-500">AI Transparency &amp; Audit Log</p>
+        <p className="text-zinc-600 text-xs mt-1">Execution summary remains visible. Detailed revisions are collapsible below.</p>
+      </div>
 
-      <div
-        className={`grid transition-all duration-300 ease-out ${
-          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        }`}
-      >
-        <div className="overflow-hidden">
-          <div className="px-4 md:px-5 pb-5 border-t border-zinc-800 space-y-5 pt-4">
-            {groups.map((group) => (
-              <section key={group.title}>
-                <h4 className="text-xs uppercase tracking-widest text-zinc-600 mb-2">{group.title}</h4>
-
-                {group.type === 'markdown' ? (
-                  <ReactMarkdown components={markdownComponents}>{group.content}</ReactMarkdown>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {group.items.map((item, index) => (
-                      <li key={`${group.title}-${index}`} className="text-sm text-zinc-500 leading-relaxed">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ))}
+      <div className="px-4 md:px-5 pt-4 pb-5 space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="border border-zinc-800 rounded-lg px-3 py-2">
+            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Bias</p>
+            <p className="text-zinc-300 text-sm mt-1">{biasConcerns.length}</p>
+          </div>
+          <div className="border border-zinc-800 rounded-lg px-3 py-2">
+            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Evidence Gaps</p>
+            <p className="text-zinc-300 text-sm mt-1">{evidenceGaps.length}</p>
+          </div>
+          <div className="border border-zinc-800 rounded-lg px-3 py-2">
+            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Unsupported</p>
+            <p className="text-zinc-300 text-sm mt-1">{unsupportedClaims.length}</p>
+          </div>
+          <div className="border border-zinc-800 rounded-lg px-3 py-2">
+            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Revisions</p>
+            <p className="text-zinc-300 text-sm mt-1">{revisionItems.length}</p>
           </div>
         </div>
+
+        {reporterNote && (
+          <section>
+            <h4 className="text-xs uppercase tracking-widest text-zinc-600 mb-2">Reporter Note</h4>
+            <ReactMarkdown components={markdownComponents}>{reporterNote}</ReactMarkdown>
+          </section>
+        )}
+
+        {unsupportedClaims.length > 0 && (
+          <section>
+            <h4 className="text-xs uppercase tracking-widest text-zinc-600 mb-2">Unsupported Claims Snapshot</h4>
+            <ul className="space-y-1.5">
+              {unsupportedClaims.slice(0, 3).map((item, index) => (
+                <li key={`unsupported-${index}`} className="text-sm text-zinc-500 leading-relaxed">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
+
+      {hiddenGroups.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-4 md:px-5 py-3.5 text-left hover:bg-zinc-800/40 transition-colors border-t border-zinc-800"
+          >
+            <div>
+              <p className="text-zinc-400 text-sm font-medium">Detailed Revision Trace</p>
+              <p className="text-zinc-600 text-xs mt-0.5">Revision Delta and Fluff Findings are stored here.</p>
+            </div>
+            <ChevronDown
+              size={16}
+              className={`text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          <div
+            className={`grid transition-all duration-300 ease-out ${
+              open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="px-4 md:px-5 pb-5 border-t border-zinc-800 space-y-5 pt-4">
+                {hiddenGroups.map((group) => (
+                  <section key={group.title}>
+                    <h4 className="text-xs uppercase tracking-widest text-zinc-600 mb-2">{group.title}</h4>
+                    <ul className="space-y-1.5">
+                      {group.items.map((item, index) => (
+                        <li key={`${group.title}-${index}`} className="text-sm text-zinc-500 leading-relaxed">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </section>
   )
 }

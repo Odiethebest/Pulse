@@ -5,6 +5,7 @@ import SearchBar from './components/SearchBar'
 import DramaScoreboard from './components/DramaScoreboard'
 import SentimentChart from './components/SentimentChart'
 import ControversyAccordion from './components/ControversyAccordion'
+import InlineCriticAlert from './components/InlineCriticAlert'
 import SynthesisReport from './components/SynthesisReport'
 import CampBattleBoard from './components/CampBattleBoard'
 import RevisionDeltaPanel from './components/RevisionDeltaPanel'
@@ -30,6 +31,8 @@ export default function App() {
   const hasResult  = isLoading || isComplete || isError
   const quickTake  = report?.quickTake ?? []
   const controversyBoardData = useMemo(() => buildControversyBoardData(report), [report])
+  const primaryBiasConcern = report?.critique?.biasConcerns?.[0] ?? null
+  const primaryEvidenceGap = report?.critique?.evidenceGaps?.[0] ?? null
   const heroLine = quickTake[0]
     ?? (isLoading
       ? 'Scanning cross platform chatter and extracting the dominant conflict line.'
@@ -113,6 +116,9 @@ export default function App() {
               debateTriggered={report?.debateTriggered ?? false}
               confidenceBreakdown={report?.confidenceBreakdown ?? null}
             />
+            {isComplete && primaryBiasConcern && (
+              <InlineCriticAlert message={primaryBiasConcern} />
+            )}
           </div>
 
           {(quickTake.length > 0 || isLoading) && (
@@ -154,6 +160,9 @@ export default function App() {
 
                 <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
                   <CampBattleBoard campDistribution={report.campDistribution} />
+                  {primaryEvidenceGap && (
+                    <InlineCriticAlert message={primaryEvidenceGap} />
+                  )}
                 </div>
 
                 <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
