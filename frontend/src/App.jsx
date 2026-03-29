@@ -90,24 +90,6 @@ export default function App() {
         : 'Run another query to generate a new public opinion snapshot.')
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
-      <AnimatePresence
-        onExitComplete={() => {
-          if (status === 'complete' || status === 'error') {
-            setDashboardReady(true)
-          }
-        }}
-      >
-        {showLoadingTheater && (
-          <div className="fixed inset-0 z-[35] bg-[#0f0f0f]/88 backdrop-blur-sm px-4 md:px-8 pt-[96px] pb-8 flex items-start justify-center">
-            <AgentTheaterLoading
-              runStatus={status}
-              agentEvents={agentEvents}
-              liveText={liveText}
-            />
-          </div>
-        )}
-      </AnimatePresence>
-
       {!isIdle && (
         <div className="pulse-topbar">
           <div className="pulse-topbar-inner">
@@ -131,9 +113,32 @@ export default function App() {
         <SearchBar onSubmit={submit} isLoading={isLoading} />
       </div>
 
+      <AnimatePresence
+        onExitComplete={() => {
+          if (status === 'complete' || status === 'error') {
+            setDashboardReady(true)
+          }
+        }}
+      >
+        {showLoadingTheater && (
+          <div className="pulse-content px-4 md:px-8">
+            <AgentTheaterLoading
+              runStatus={status}
+              agentEvents={agentEvents}
+              liveText={liveText}
+            />
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Final dashboard after theater dismissal */}
       {shouldRenderDashboard && (
-        <div className="pulse-content flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="pulse-content flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8"
+        >
 
           <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5 md:p-6 overflow-hidden" style={{ animationDelay: '20ms' }}>
             <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
@@ -220,7 +225,7 @@ export default function App() {
               revisionAnchors={report.revisionAnchors}
             />
           </motion.div>
-        </div>
+        </motion.div>
       )}
 
       {shouldRenderErrorState && (

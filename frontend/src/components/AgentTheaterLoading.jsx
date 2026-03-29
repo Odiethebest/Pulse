@@ -158,94 +158,96 @@ export default function AgentTheaterLoading({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -20, scale: 0.95, transition: { duration: 0.3, ease: 'easeOut' } }}
-      className="w-full max-w-6xl mx-auto bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
+      initial={{ opacity: 0, y: 10, filter: 'blur(2px)' }}
+      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, filter: 'blur(10px)', transition: { duration: 0.6, ease: 'easeOut' } }}
+      className="w-full max-w-7xl mx-auto min-h-[60vh] flex flex-col justify-center mt-12"
     >
-      <div className="px-5 py-4 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-[0.16em]">Agent Theater</p>
-          <p className="text-zinc-300 text-sm mt-1 break-words whitespace-normal">
-            Live execution tree and terminal logs are running in real time.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="rounded-full border border-zinc-700 px-2.5 py-1 text-zinc-400">Done {completedCount}</span>
-          <span className="rounded-full border border-indigo-500/30 px-2.5 py-1 text-indigo-300">Running {runningCount}</span>
-          <span className="rounded-full border border-rose-500/30 px-2.5 py-1 text-rose-300">Failed {failedCount}</span>
-          {allGreen && (
-            <span className="rounded-full border border-emerald-500/30 px-2.5 py-1 text-emerald-300">All Systems Green</span>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-0">
-        <div className="p-5 border-b xl:border-b-0 xl:border-r border-zinc-800 bg-zinc-950/70">
-          <p className="text-zinc-500 text-xs uppercase tracking-[0.15em] mb-4">Execution Tree</p>
-          <div className="space-y-0">
-            {nodes.map((node, index) => {
-              const lineTone = node.state === 'completed'
-                ? 'bg-emerald-500/70'
-                : node.state === 'running'
-                  ? 'bg-indigo-400/60'
-                  : node.state === 'failed'
-                    ? 'bg-rose-400/60'
-                    : 'bg-zinc-700/70'
-
-              return (
-                <div key={node.id} className="relative py-1.5" style={{ paddingLeft: `${node.depth * 14}px` }}>
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="flex flex-col items-center shrink-0">
-                      <NodeDot state={node.state} />
-                      {index < nodes.length - 1 && (
-                        <span className={`mt-1 h-6 w-px ${lineTone}`} />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm text-zinc-200 break-words whitespace-normal">{node.label}</p>
-                      <p className="text-[11px] text-zinc-500 mt-0.5 break-words whitespace-normal">
-                        {node.state === 'completed' && node.duration !== null
-                          ? `Completed in ${node.duration}ms`
-                          : node.state === 'running'
-                            ? 'Running'
-                            : node.state === 'failed'
-                              ? 'Failed'
-                              : 'Pending'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+      <div className="w-full border border-zinc-800/80 rounded-2xl bg-zinc-950/45 shadow-[0_30px_80px_rgba(0,0,0,0.35)] overflow-hidden">
+        <div className="px-7 py-5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.16em]">Pulse Command Center</p>
+            <p className="text-zinc-300 text-sm mt-1 break-words whitespace-normal">
+              Live execution tree and terminal logs are running in real time.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs flex-wrap">
+            <span className="rounded-full border border-zinc-700 px-2.5 py-1 text-zinc-400">Done {completedCount}</span>
+            <span className="rounded-full border border-indigo-500/30 px-2.5 py-1 text-indigo-300">Running {runningCount}</span>
+            <span className="rounded-full border border-rose-500/30 px-2.5 py-1 text-rose-300">Failed {failedCount}</span>
+            {allGreen && (
+              <span className="rounded-full border border-emerald-500/30 px-2.5 py-1 text-emerald-300">All Systems Green</span>
+            )}
           </div>
         </div>
 
-        <div className="p-5 min-w-0">
-          <p className="text-zinc-500 text-xs uppercase tracking-[0.15em] mb-3">Agent Logs</p>
-          <div
-            ref={logRef}
-            className="bg-black rounded-lg p-4 h-[370px] overflow-y-auto font-mono text-xs border border-zinc-800"
-          >
-            {safeEvents.length > 0 ? (
-              <div className="space-y-1.5">
-                {safeEvents.map((event, index) => (
-                  <div key={`${event.agentName}-${event.timestamp}-${index}`} className="flex items-start gap-2 min-w-0">
-                    <span className="text-zinc-600 shrink-0">{formatClock(event.timestamp)}</span>
-                    <span className={`shrink-0 ${statusTone(event.status)}`}>{event.status}</span>
-                    <span className="text-sky-300 shrink-0">{event.agentName}</span>
-                    <span className="text-zinc-300 break-words whitespace-normal min-w-0 flex-1">{event.summary}</span>
-                    {event.durationMs > 0 && (
-                      <span className="text-zinc-500 shrink-0">{event.durationMs}ms</span>
-                    )}
+        <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-12 xl:gap-16 p-7 md:p-10 min-h-[520px]">
+          <div className="min-h-[500px] rounded-xl border border-zinc-800/70 bg-zinc-950/60 p-5">
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.15em] mb-4">Execution Tree</p>
+            <div className="space-y-0">
+              {nodes.map((node, index) => {
+                const lineTone = node.state === 'completed'
+                  ? 'bg-emerald-500/70'
+                  : node.state === 'running'
+                    ? 'bg-indigo-400/60'
+                    : node.state === 'failed'
+                      ? 'bg-rose-400/60'
+                      : 'bg-zinc-700/70'
+
+                return (
+                  <div key={node.id} className="relative py-1.5" style={{ paddingLeft: `${node.depth * 14}px` }}>
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="flex flex-col items-center shrink-0">
+                        <NodeDot state={node.state} />
+                        {index < nodes.length - 1 && (
+                          <span className={`mt-1 h-6 w-px ${lineTone}`} />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm text-zinc-200 break-words whitespace-normal">{node.label}</p>
+                        <p className="text-[11px] text-zinc-500 mt-0.5 break-words whitespace-normal">
+                          {node.state === 'completed' && node.duration !== null
+                            ? `Completed in ${node.duration}ms`
+                            : node.state === 'running'
+                              ? 'Running'
+                              : node.state === 'failed'
+                                ? 'Failed'
+                                : 'Pending'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-zinc-500 break-words whitespace-normal">
-                Waiting for first agent event...
-              </p>
-            )}
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="min-w-0 min-h-[500px] rounded-xl border border-zinc-800/70 bg-zinc-950/60 p-5">
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.15em] mb-3">Agent Logs</p>
+            <div
+              ref={logRef}
+              className="bg-black rounded-lg p-4 h-[500px] overflow-y-auto font-mono text-sm leading-relaxed border border-zinc-800"
+            >
+              {safeEvents.length > 0 ? (
+                <div className="space-y-1.5">
+                  {safeEvents.map((event, index) => (
+                    <div key={`${event.agentName}-${event.timestamp}-${index}`} className="flex items-start gap-2 min-w-0">
+                      <span className="text-zinc-600 shrink-0">{formatClock(event.timestamp)}</span>
+                      <span className={`shrink-0 ${statusTone(event.status)}`}>{event.status}</span>
+                      <span className="text-sky-300 shrink-0">{event.agentName}</span>
+                      <span className="text-zinc-300 break-words whitespace-normal min-w-0 flex-1">{event.summary}</span>
+                      {event.durationMs > 0 && (
+                        <span className="text-zinc-500 shrink-0">{event.durationMs}ms</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-zinc-500 break-words whitespace-normal">
+                  Waiting for first agent event...
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
