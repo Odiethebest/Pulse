@@ -303,7 +303,7 @@ export default function ControversyAccordion({ data }) {
 
       <div id="signal-feed" className="px-4 md:px-5 pt-4 md:pt-4 pb-5 md:pb-5">
         {filteredQuotes.length > 0 ? (
-          <motion.div className="columns-1 sm:columns-2 lg:columns-3 gap-4 md:gap-6 mt-1 md:mt-2">
+          <motion.div className="columns-2 lg:columns-3 gap-4 md:gap-6 mt-1 md:mt-2">
             <AnimatePresence mode="popLayout">
               {displayedQuotes.map((quote) => (
                 <QuoteCard
