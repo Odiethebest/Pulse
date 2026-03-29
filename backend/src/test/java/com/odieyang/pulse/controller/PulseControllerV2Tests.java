@@ -165,5 +165,10 @@ class PulseControllerV2Tests {
         public PulseReport analyze(String topic) {
             return report;
         }
+
+        @Override
+        public PulseReport analyze(String topic, String requestedRunId) {
+            return report;
+        }
     }
 }

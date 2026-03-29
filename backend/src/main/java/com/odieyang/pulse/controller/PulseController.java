@@ -23,14 +23,15 @@ public class PulseController {
 
     @PostMapping("/analyze")
     public PulseReport analyze(@RequestBody AnalyzeRequest request) {
-        log.info("POST /pulse/analyze (or /api/pulse/analyze) topic='{}'", request.topic());
-        return orchestrator.analyze(request.topic());
+        log.info("POST /pulse/analyze (or /api/pulse/analyze) topic='{}', runId='{}'",
+                request.topic(), request.runId());
+        return orchestrator.analyze(request.topic(), request.runId());
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<AgentEvent> stream() {
-        return publisher.stream();
+    public Flux<AgentEvent> stream(@RequestParam(required = false) String runId) {
+        return publisher.stream(runId);
     }
 
-    record AnalyzeRequest(String topic) {}
+    record AnalyzeRequest(String topic, String runId) {}
 }

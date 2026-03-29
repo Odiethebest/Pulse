@@ -14,7 +14,9 @@ import reactor.core.Disposable;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -64,164 +66,184 @@ public class PulseOrchestrator {
     private int minClaimEvidenceCoverage;
 
     public PulseReport analyze(String topic) {
-        log.info("Starting analysis for topic: {}", topic);
+        return analyze(topic, null);
+    }
+
+    public PulseReport analyze(String topic, String requestedRunId) {
+        String runId = resolveRunId(requestedRunId);
+        log.info("Starting analysis for topic: {}, runId={}", topic, runId);
+
+        publisher.registerRun(runId);
         List<AgentEvent> trace = new ArrayList<>();
-        Disposable traceSubscription = publisher.stream().subscribe(trace::add);
+        Disposable traceSubscription = publisher.stream(runId).subscribe(trace::add);
 
         try {
-        // Step 1: Plan queries
-        QueryPlan plan = queryPlannerAgent.plan(topic);
-        String coreEntity = extractCoreEntity(topic, plan.topicSummary());
+            // Step 1: Plan queries
+            QueryPlan plan = scoped(runId, () -> queryPlannerAgent.plan(topic));
+            String coreEntity = extractCoreEntity(topic, plan.topicSummary());
 
-        // Step 2: Fetch posts in parallel
-        CompletableFuture<RawPosts> redditFuture =
-                CompletableFuture.supplyAsync(() -> redditAgent.fetch(plan.redditQueries()));
-        CompletableFuture<RawPosts> twitterFuture =
-                CompletableFuture.supplyAsync(() -> twitterAgent.fetch(plan.twitterQueries()));
+            // Step 2: Fetch posts in parallel
+            CompletableFuture<RawPosts> redditFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> redditAgent.fetch(plan.redditQueries())));
+            CompletableFuture<RawPosts> twitterFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> twitterAgent.fetch(plan.twitterQueries())));
 
-        RawPosts reddit = redditFuture.join();
-        RawPosts twitter = twitterFuture.join();
+            RawPosts reddit = redditFuture.join();
+            RawPosts twitter = twitterFuture.join();
 
-        // Step 3: Analyze in parallel
-        CompletableFuture<SentimentResult> redditSentimentFuture =
-                CompletableFuture.supplyAsync(() -> sentimentAgent.analyze(reddit));
-        CompletableFuture<SentimentResult> twitterSentimentFuture =
-                CompletableFuture.supplyAsync(() -> sentimentAgent.analyze(twitter));
-        CompletableFuture<StanceResult> stanceFuture =
-                CompletableFuture.supplyAsync(() -> safeRun(
-                        () -> stanceAgent.analyze(reddit, twitter),
-                        defaultStanceResult(),
-                        "StanceAgent"));
-        CompletableFuture<ConflictResult> conflictFuture =
-                CompletableFuture.supplyAsync(() -> safeRun(
-                        () -> conflictAgent.analyze(reddit, twitter),
-                        defaultConflictResult(),
-                        "ConflictAgent"));
-        CompletableFuture<AspectResult> aspectFuture =
-                CompletableFuture.supplyAsync(() -> safeRun(
-                        () -> aspectAgent.analyze(reddit, twitter),
-                        defaultAspectResult(),
-                        "AspectAgent"));
-        CompletableFuture<FlipRiskResult> flipRiskFuture =
-                CompletableFuture.supplyAsync(() -> safeRun(
-                        () -> flipRiskAgent.analyze(reddit, twitter),
-                        defaultFlipRiskResult(),
-                        "FlipRiskAgent"));
+            // Step 3: Analyze in parallel
+            CompletableFuture<SentimentResult> redditSentimentFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> sentimentAgent.analyze(reddit)));
+            CompletableFuture<SentimentResult> twitterSentimentFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> sentimentAgent.analyze(twitter)));
+            CompletableFuture<StanceResult> stanceFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> safeRun(
+                            () -> stanceAgent.analyze(reddit, twitter),
+                            defaultStanceResult(),
+                            "StanceAgent")));
+            CompletableFuture<ConflictResult> conflictFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> safeRun(
+                            () -> conflictAgent.analyze(reddit, twitter),
+                            defaultConflictResult(),
+                            "ConflictAgent")));
+            CompletableFuture<AspectResult> aspectFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> safeRun(
+                            () -> aspectAgent.analyze(reddit, twitter),
+                            defaultAspectResult(),
+                            "AspectAgent")));
+            CompletableFuture<FlipRiskResult> flipRiskFuture =
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> safeRun(
+                            () -> flipRiskAgent.analyze(reddit, twitter),
+                            defaultFlipRiskResult(),
+                            "FlipRiskAgent")));
 
-        SentimentResult redditSentiment = redditSentimentFuture.join();
-        SentimentResult twitterSentiment = twitterSentimentFuture.join();
-        StanceResult stanceResult = stanceFuture.join();
-        ConflictResult conflictResult = conflictFuture.join();
-        AspectResult aspectResult = aspectFuture.join();
-        FlipRiskResult flipRiskResult = flipRiskFuture.join();
+            SentimentResult redditSentiment = redditSentimentFuture.join();
+            SentimentResult twitterSentiment = twitterSentimentFuture.join();
+            StanceResult stanceResult = stanceFuture.join();
+            ConflictResult conflictResult = conflictFuture.join();
+            AspectResult aspectResult = aspectFuture.join();
+            FlipRiskResult flipRiskResult = flipRiskFuture.join();
 
-        // Step 4: Initial synthesis
-        String synthesis = synthesisAgent.synthesizeWithCoreEntity(
-                reddit,
-                twitter,
-                redditSentiment,
-                twitterSentiment,
-                coreEntity
-        );
+            // Step 4: Initial synthesis
+            String synthesis = scoped(runId, () -> synthesisAgent.synthesizeWithCoreEntity(
+                    reddit,
+                    twitter,
+                    redditSentiment,
+                    twitterSentiment,
+                    coreEntity
+            ));
 
-        // Step 5: Critic evaluation
-        CriticResult critique = criticAgent.critique(synthesis, reddit, twitter);
+            // Step 5: Critic evaluation
+            String synthesisForCritique = synthesis;
+            CriticResult critique = scoped(runId, () -> criticAgent.critique(synthesisForCritique, reddit, twitter));
 
-        // Step 6: Critic-triggered rewrite — low confidence or low writing quality
-        boolean debateTriggered = false;
-        String rewriteGuidance = buildRewriteGuidance(critique);
-        if (rewriteGuidance != null) {
-            try {
-                synthesis = synthesisAgent.synthesizeWithCoreEntity(
-                        reddit,
-                        twitter,
-                        redditSentiment,
-                        twitterSentiment,
-                        rewriteGuidance,
-                        coreEntity
-                );
-                debateTriggered = true;
-            } catch (Exception revisionError) {
-                log.warn("Revision synthesis failed, fallback to initial synthesis: {}",
-                        revisionError.getMessage());
+            // Step 6: Critic-triggered rewrite — low confidence or low writing quality
+            boolean debateTriggered = false;
+            String rewriteGuidance = buildRewriteGuidance(critique);
+            if (rewriteGuidance != null) {
+                try {
+                    synthesis = scoped(runId, () -> synthesisAgent.synthesizeWithCoreEntity(
+                            reddit,
+                            twitter,
+                            redditSentiment,
+                            twitterSentiment,
+                            rewriteGuidance,
+                            coreEntity
+                    ));
+                    debateTriggered = true;
+                } catch (Exception revisionError) {
+                    log.warn("Revision synthesis failed, fallback to initial synthesis: {}",
+                            revisionError.getMessage());
+                }
             }
-        }
 
-        String platformDiff = buildPlatformDiff(redditSentiment, twitterSentiment);
-        CampDistribution campDistribution = stanceResult.toCampDistribution();
-        int polarizationScore = computePolarization(campDistribution);
-        int heatScore = clampScore(conflictResult.heatScore());
-        int flipRiskScore = clampScore(flipRiskResult.flipRiskScore());
-        List<ControversyTopic> controversyTopics = chooseControversyTopics(aspectResult, redditSentiment, twitterSentiment);
-        int dramaScore = computeDramaScore(heatScore, polarizationScore, controversyTopics);
-        List<FlipSignal> flipSignals = chooseFlipSignals(flipRiskResult, critique);
-        List<String> revisionDelta = chooseRevisionDelta(critique);
-        List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
-        List<ClaimEvidenceLink> claimEvidenceMap = buildClaimEvidenceMap(
-                coreEntity,
-                campDistribution,
-                controversyTopics,
-                heatScore,
-                flipRiskScore,
-                debateTriggered,
-                platformDiff,
-                evidenceUrls
-        );
-        List<RevisionAnchor> revisionAnchors = buildRevisionAnchors(revisionDelta, claimEvidenceMap);
-        List<ClaimAnnotation> claimAnnotations = buildClaimAnnotations(critique, revisionAnchors);
-        List<RiskFlag> riskFlags = buildRiskFlags(critique, flipSignals, claimEvidenceMap);
-        List<String> quickTake = buildQuickTake(claimEvidenceMap, evidenceUrls);
-        ConfidenceBreakdown confidenceBreakdown = buildConfidenceBreakdown(
-                critique.confidenceScore(),
-                reddit,
-                twitter,
-                controversyTopics,
-                flipSignals
-        );
-        synthesis = finalizeSynthesis(
-                synthesis,
-                coreEntity,
-                quickTake,
-                controversyTopics,
-                flipSignals,
-                campDistribution,
-                heatScore,
-                flipRiskScore,
-                platformDiff
-        );
+            String platformDiff = buildPlatformDiff(redditSentiment, twitterSentiment);
+            CampDistribution campDistribution = stanceResult.toCampDistribution();
+            int polarizationScore = computePolarization(campDistribution);
+            int heatScore = clampScore(conflictResult.heatScore());
+            int flipRiskScore = clampScore(flipRiskResult.flipRiskScore());
+            List<ControversyTopic> controversyTopics = chooseControversyTopics(aspectResult, redditSentiment, twitterSentiment);
+            int dramaScore = computeDramaScore(heatScore, polarizationScore, controversyTopics);
+            List<FlipSignal> flipSignals = chooseFlipSignals(flipRiskResult, critique);
+            List<String> revisionDelta = chooseRevisionDelta(critique);
+            List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
+            List<ClaimEvidenceLink> claimEvidenceMap = buildClaimEvidenceMap(
+                    coreEntity,
+                    campDistribution,
+                    controversyTopics,
+                    heatScore,
+                    flipRiskScore,
+                    debateTriggered,
+                    platformDiff,
+                    evidenceUrls
+            );
+            List<RevisionAnchor> revisionAnchors = buildRevisionAnchors(revisionDelta, claimEvidenceMap);
+            List<ClaimAnnotation> claimAnnotations = buildClaimAnnotations(critique, revisionAnchors);
+            List<RiskFlag> riskFlags = buildRiskFlags(critique, flipSignals, claimEvidenceMap);
+            List<String> quickTake = buildQuickTake(claimEvidenceMap, evidenceUrls);
+            ConfidenceBreakdown confidenceBreakdown = buildConfidenceBreakdown(
+                    critique.confidenceScore(),
+                    reddit,
+                    twitter,
+                    controversyTopics,
+                    flipSignals
+            );
+            synthesis = finalizeSynthesis(
+                    synthesis,
+                    coreEntity,
+                    quickTake,
+                    controversyTopics,
+                    flipSignals,
+                    campDistribution,
+                    heatScore,
+                    flipRiskScore,
+                    platformDiff
+            );
 
-        log.info("Analysis complete for '{}', confidence={}, debateTriggered={}",
-                topic, critique.confidenceScore(), debateTriggered);
+            log.info("Analysis complete for '{}', runId={}, confidence={}, debateTriggered={}",
+                    topic, runId, critique.confidenceScore(), debateTriggered);
 
-        return new PulseReport(
-                topic,
-                plan.topicSummary(),
-                redditSentiment,
-                twitterSentiment,
-                platformDiff,
-                synthesis,
-                critique,
-                critique.confidenceScore(),
-                debateTriggered,
-                trace,
-                quickTake,
-                dramaScore,
-                polarizationScore,
-                heatScore,
-                flipRiskScore,
-                confidenceBreakdown,
-                campDistribution,
-                controversyTopics,
-                flipSignals,
-                revisionDelta,
-                claimEvidenceMap,
-                claimAnnotations,
-                riskFlags,
-                revisionAnchors
-        );
+            return new PulseReport(
+                    topic,
+                    plan.topicSummary(),
+                    redditSentiment,
+                    twitterSentiment,
+                    platformDiff,
+                    synthesis,
+                    critique,
+                    critique.confidenceScore(),
+                    debateTriggered,
+                    trace,
+                    quickTake,
+                    dramaScore,
+                    polarizationScore,
+                    heatScore,
+                    flipRiskScore,
+                    confidenceBreakdown,
+                    campDistribution,
+                    controversyTopics,
+                    flipSignals,
+                    revisionDelta,
+                    claimEvidenceMap,
+                    claimAnnotations,
+                    riskFlags,
+                    revisionAnchors
+            );
         } finally {
             traceSubscription.dispose();
+            publisher.unregisterRun(runId);
         }
+    }
+
+    private String resolveRunId(String requestedRunId) {
+        if (requestedRunId == null || requestedRunId.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        return requestedRunId.trim();
+    }
+
+    private <T> T scoped(String runId, Supplier<T> supplier) {
+        return publisher.withRunContext(runId, supplier);
     }
 
     private String buildRewriteGuidance(CriticResult critique) {

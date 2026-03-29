@@ -9,6 +9,10 @@ const ANALYZE_TIMEOUT_MS = (() => {
 
 const clampScore = (v) => Math.max(0, Math.min(100, Number.isFinite(v) ? Math.round(v) : 0))
 const asArray = (v) => Array.isArray(v) ? v : []
+const normalizeRunId = (runId) => {
+  const value = String(runId ?? '').trim()
+  return value.length > 0 ? value : null
+}
 
 function normalizeQuote(quote) {
   const sentiment = (quote?.sentiment || 'neutral').toLowerCase()
@@ -202,18 +206,21 @@ function normalizeReport(payload) {
 /**
  * POST /api/pulse/analyze
  * @param {string} topic
+ * @param {string|null} runId
  * @returns {Promise<PulseReport>}
  */
-export async function analyzeTopic(topic) {
+export async function analyzeTopic(topic, runId = null) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS)
+  const normalizedRunId = normalizeRunId(runId)
+  const requestBody = normalizedRunId ? { topic, runId: normalizedRunId } : { topic }
 
   try {
     try {
       const res = await fetch(`${PULSE_BASE}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       })
       if (!res.ok) throw new Error(`analyze failed: ${res.status}`)
@@ -232,14 +239,19 @@ export async function analyzeTopic(topic) {
 
 /**
  * GET /api/pulse/stream (SSE)
+ * @param {string|null} runId
  * @param {(event: AgentEvent) => void} onEvent
  * @param {() => void} onError
  * @returns {{ cleanup: () => void, ready: Promise<void> }}
  *   cleanup — closes the EventSource
  *   ready   — resolves when connection is OPEN, first message arrives, or 500ms elapses
  */
-export function connectSSE(onEvent, onError) {
-  const es = new EventSource(`${PULSE_BASE}/stream`)
+export function connectSSE(runId, onEvent, onError) {
+  const normalizedRunId = normalizeRunId(runId)
+  const streamUrl = normalizedRunId
+    ? `${PULSE_BASE}/stream?runId=${encodeURIComponent(normalizedRunId)}`
+    : `${PULSE_BASE}/stream`
+  const es = new EventSource(streamUrl)
 
   let resolveReady
   const ready = new Promise((resolve) => {

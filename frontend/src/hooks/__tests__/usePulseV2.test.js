@@ -14,11 +14,13 @@ describe('usePulse V2 flow', () => {
   })
 
   it('completes V2 state flow and converges after SSE events', async () => {
+    let runIdFromSse
     let sseOnEvent
     let sseOnError
     const cleanup = vi.fn()
 
-    connectSSE.mockImplementation((onEvent, onError) => {
+    connectSSE.mockImplementation((runId, onEvent, onError) => {
+      runIdFromSse = runId
       sseOnEvent = onEvent
       sseOnError = onError
       return { cleanup, ready: Promise.resolve() }
@@ -54,7 +56,9 @@ describe('usePulse V2 flow', () => {
     })
 
     await waitFor(() => expect(result.current.status).toBe('complete'))
-    expect(analyzeTopic).toHaveBeenCalledWith('Chip war')
+    expect(typeof runIdFromSse).toBe('string')
+    expect(runIdFromSse.length).toBeGreaterThan(0)
+    expect(analyzeTopic).toHaveBeenCalledWith('Chip war', runIdFromSse)
     expect(result.current.report.topic).toBe('Chip war')
     expect(result.current.agentEvents).toHaveLength(2)
     expect(result.current.liveText).toContain('[STARTED] QueryPlannerAgent')
@@ -101,5 +105,44 @@ describe('usePulse V2 flow', () => {
     expect(result.current.agentSummary.overallState).toBe('failed')
     expect(cleanup).toHaveBeenCalledTimes(1)
     consoleErrorSpy.mockRestore()
+  })
+
+  it('cancels active run and ignores late analyze result', async () => {
+    const cleanup = vi.fn()
+    connectSSE.mockReturnValue({ cleanup, ready: Promise.resolve() })
+
+    let resolveAnalyze
+    analyzeTopic.mockImplementation(() => new Promise((resolve) => {
+      resolveAnalyze = resolve
+    }))
+
+    const { result } = renderHook(() => usePulse())
+
+    act(() => {
+      result.current.submit('Cancel topic')
+    })
+
+    await waitFor(() => expect(result.current.status).toBe('loading'))
+
+    act(() => {
+      result.current.cancelRun()
+    })
+
+    expect(result.current.status).toBe('idle')
+
+    await act(async () => {
+      resolveAnalyze({
+        topic: 'Cancel topic',
+        dramaScore: 61,
+        polarizationScore: 52,
+        heatScore: 59,
+        flipRiskScore: 48,
+      })
+      await Promise.resolve()
+    })
+
+    expect(result.current.status).toBe('idle')
+    expect(result.current.report).toBeNull()
+    expect(cleanup).toHaveBeenCalledTimes(1)
   })
 })
