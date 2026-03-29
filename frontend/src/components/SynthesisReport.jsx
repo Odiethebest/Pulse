@@ -134,7 +134,7 @@ export default function SynthesisReport({
 
       <div className="px-4 md:px-5 py-4 border-b border-zinc-800">
         <p className="font-mono uppercase tracking-[0.18em] text-xs text-zinc-500">Data Integrity &amp; Trust</p>
-        <p className="text-zinc-600 text-xs mt-1">Critic checks are condensed into status badges and a compact action queue.</p>
+        <p className="text-zinc-600 text-xs mt-1 break-words whitespace-normal">Critic checks are condensed into status badges and a compact action queue.</p>
       </div>
 
       <div className="px-4 md:px-5 py-4 space-y-4">
@@ -144,17 +144,17 @@ export default function SynthesisReport({
             return (
               <div
                 key={item.key}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${healthTone(item.count)}`}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs min-w-0 ${healthTone(item.count)}`}
               >
                 <Icon size={13} />
-                <span>{item.label}</span>
+                <span className="break-words whitespace-normal">{item.label}</span>
                 <span className="font-semibold">{item.count}</span>
               </div>
             )
           })}
         </div>
 
-        <div className="rounded-lg border border-zinc-800 bg-[#0f0f0f] px-3 py-3">
+        <div className="rounded-lg border border-zinc-800 bg-[#0f0f0f] px-3 py-3 overflow-hidden">
           <div className="flex items-center justify-between gap-2 mb-2">
             <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-500">Action Items</p>
             <p className="text-[11px] text-zinc-600">{actionItems.length} open</p>
@@ -165,16 +165,16 @@ export default function SynthesisReport({
               {actionItems.map((item, index) => (
                 <li
                   key={`${item.label}-${index}`}
-                  className="flex items-start gap-2 text-sm text-zinc-400 leading-relaxed"
+                  className="flex items-start gap-2 text-sm text-zinc-400 leading-relaxed min-w-0"
                 >
                   <span className={`h-1.5 w-1.5 rounded-full mt-1.5 shrink-0 ${item.dot}`} />
-                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-600 mt-0.5">{item.label}</span>
-                  <span className="flex-1 min-w-0">{item.text}</span>
+                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-600 mt-0.5 shrink-0">{item.label}</span>
+                  <span className="flex-1 min-w-0 break-words whitespace-normal">{item.text}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="font-mono text-xs text-emerald-300/80">No open integrity action items for this run.</p>
+            <p className="font-mono text-xs text-emerald-300/80 break-words whitespace-normal">No open integrity action items for this run.</p>
           )}
         </div>
       </div>
@@ -184,11 +184,11 @@ export default function SynthesisReport({
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="w-full flex items-center justify-between px-4 md:px-5 py-3.5 text-left hover:bg-zinc-800/40 transition-colors border-t border-zinc-800"
+            className="w-full flex items-center justify-between px-4 md:px-5 py-3.5 text-left hover:bg-zinc-800/40 transition-colors border-t border-zinc-800 min-w-0"
           >
-            <div>
-              <p className="text-zinc-400 text-sm font-medium">Inspect Detailed Audit Trail</p>
-              <p className="text-zinc-600 text-xs mt-0.5">Granular revision notes and fluff diagnostics.</p>
+            <div className="min-w-0">
+              <p className="text-zinc-400 text-sm font-medium break-words whitespace-normal">Inspect Detailed Audit Trail</p>
+              <p className="text-zinc-600 text-xs mt-0.5 break-words whitespace-normal">Granular revision notes and fluff diagnostics.</p>
             </div>
             <ChevronDown
               size={16}
@@ -208,7 +208,7 @@ export default function SynthesisReport({
                     <h4 className="text-xs uppercase tracking-widest text-zinc-600 mb-2">{group.title}</h4>
                     <ul className="space-y-1.5">
                       {group.items.map((item, index) => (
-                        <li key={`${group.title}-${index}`} className="text-sm text-zinc-500 leading-relaxed">
+                        <li key={`${group.title}-${index}`} className="text-sm text-zinc-500 leading-relaxed break-words whitespace-normal">
                           {item}
                         </li>
                       ))}

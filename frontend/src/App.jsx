@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Sparkles } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { usePulse } from './hooks/usePulse'
 import { keepAlive } from './lib/api'
 import SearchBar from './components/SearchBar'
@@ -10,6 +11,7 @@ import SynthesisReport from './components/SynthesisReport'
 import CampBattleBoard from './components/CampBattleBoard'
 import GlobalRunStatus from './components/GlobalRunStatus'
 import AgentTraceDrawer from './components/AgentTraceDrawer'
+import LoadingScreen from './components/LoadingScreen'
 import { buildControversyBoardData } from './lib/controversyMapper'
 import './App.css'
 
@@ -18,9 +20,14 @@ export default function App() {
 
   const { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit } = usePulse()
   const [traceOpen, setTraceOpen] = useState(false)
+  const [loadingSequenceDone, setLoadingSequenceDone] = useState(false)
 
   useEffect(() => {
     setTraceOpen(false)
+  }, [runId])
+
+  useEffect(() => {
+    setLoadingSequenceDone(false)
   }, [runId])
 
   const isIdle     = status === 'idle'
@@ -28,10 +35,17 @@ export default function App() {
   const isComplete = status === 'complete'
   const isError    = status === 'error'
   const hasResult  = isLoading || isComplete || isError
+  const showLoadingScreen = isLoading && !loadingSequenceDone
   const quickTake  = report?.quickTake ?? []
   const controversyBoardData = useMemo(() => buildControversyBoardData(report), [report])
   const primaryBiasConcern = report?.critique?.biasConcerns?.[0] ?? null
   const primaryEvidenceGap = report?.critique?.evidenceGaps?.[0] ?? null
+  const revealProps = {
+    initial: { opacity: 0, y: 30 },
+    whileInView: { opacity: 1, y: 0 },
+    viewport: { once: true, margin: '-50px' },
+    transition: { duration: 0.6, ease: 'easeOut' },
+  }
   const heroLine = quickTake[0]
     ?? (isLoading
       ? 'Scanning cross platform chatter and extracting the dominant conflict line.'
@@ -45,6 +59,16 @@ export default function App() {
         : 'Run another query to generate a new public opinion snapshot.')
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
+      <AnimatePresence>
+        {showLoadingScreen && (
+          <LoadingScreen
+            runId={runId}
+            isLoading={isLoading}
+            onSequenceComplete={() => setLoadingSequenceDone(true)}
+          />
+        )}
+      </AnimatePresence>
+
       {!isIdle && (
         <div className="pulse-topbar">
           <div className="pulse-topbar-inner">
@@ -76,13 +100,13 @@ export default function App() {
             <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
               Frontline Verdict
             </p>
-            <h2 className="text-white text-xl md:text-2xl leading-snug font-semibold tracking-tight">
+            <h2 className="text-white text-xl md:text-2xl leading-snug font-semibold tracking-tight break-words whitespace-normal">
               {heroLine}
             </h2>
-            <p className="text-sm text-[#9ca3af] leading-relaxed mt-2">
+            <p className="text-sm text-[#9ca3af] leading-relaxed mt-2 break-words whitespace-normal">
               {heroSubline}
             </p>
-            <p className="text-xs text-[#6b7280] mt-3">Camp split percentages are centralized in Camp Battle below.</p>
+            <p className="text-xs text-[#6b7280] mt-3 break-words whitespace-normal">Camp split percentages are centralized in Camp Battle below.</p>
           </div>
 
           <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4" style={{ animationDelay: '80ms' }}>
@@ -100,7 +124,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="drama-module animate-fade-up" style={{ animationDelay: '120ms' }}>
+          <motion.div className="drama-module" {...revealProps}>
             <DramaScoreboard
               metrics={metrics}
               confidenceScore={report?.confidenceScore ?? null}
@@ -108,18 +132,18 @@ export default function App() {
               confidenceBreakdown={report?.confidenceBreakdown ?? null}
               criticNote={isComplete ? primaryBiasConcern : null}
             />
-          </div>
+          </motion.div>
 
           {(quickTake.length > 0 || isLoading) && (
-            <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4" style={{ animationDelay: '160ms' }}>
+            <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden p-4" style={{ animationDelay: '160ms' }}>
               <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
               {quickTake.length > 0 ? (
-                <div className="bg-zinc-900/40 rounded-xl border-l-4 border-indigo-500/70 p-6">
+                <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-6">
                   <div className="space-y-3">
                     {quickTake.slice(0, 3).map((line, i) => (
                       <div key={i} className="stagger-1 flex items-start gap-3">
                         <Sparkles size={15} className="text-indigo-400 mt-0.5 shrink-0" />
-                        <p className="text-zinc-300 leading-relaxed text-sm">{line}</p>
+                        <p className="text-zinc-300 leading-relaxed text-sm break-words whitespace-normal min-w-0">{line}</p>
                       </div>
                     ))}
                   </div>
@@ -149,28 +173,28 @@ export default function App() {
                   />
                 </div>
 
-                <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+                <motion.div {...revealProps}>
                   <CampBattleBoard
                     campDistribution={report.campDistribution}
                     criticNote={primaryEvidenceGap}
                   />
-                </div>
+                </motion.div>
 
-                <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
+                <motion.div {...revealProps}>
                   <ControversyAccordion
                     data={controversyBoardData}
                   />
-                </div>
+                </motion.div>
               </div>
 
-              <div className="animate-fade-up mt-8" style={{ animationDelay: '220ms' }}>
+              <motion.div className="mt-8" {...revealProps}>
                 <SynthesisReport
                   synthesis={report.synthesis}
                   critique={report.critique}
                   revisionDelta={report.revisionDelta}
                   revisionAnchors={report.revisionAnchors}
                 />
-              </div>
+              </motion.div>
             </>
           )}
 

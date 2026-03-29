@@ -149,15 +149,15 @@ function QuoteCard({ quote, topicNameMap }) {
       transition={{ type: 'spring', stiffness: 260, damping: 20 }}
       className="inline-block w-full break-inside-avoid mb-6"
     >
-      <article className={`rounded-xl p-5 transition-colors ${shellClass}`}>
+      <article className={`rounded-xl p-6 transition-colors ${shellClass}`}>
         {isHighlight && (
           <div className="mb-3 h-px rounded-full bg-gradient-to-r from-transparent via-zinc-300/40 to-transparent" />
         )}
 
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
+          <div className="inline-flex items-center gap-1.5 text-xs text-zinc-400 min-w-0">
             {platformIcon(platform)}
-            <span>{platform}</span>
+            <span className="truncate">{platform}</span>
           </div>
           <span className={`text-xs rounded-full px-2 py-0.5 ${sentimentClass}`}>
             {quote.sentiment || 'Neutral'}
@@ -172,26 +172,26 @@ function QuoteCard({ quote, topicNameMap }) {
         )}
 
         <p
-          className={
+          className={`${
             isHighlight
               ? 'text-lg md:text-xl font-serif text-zinc-100 leading-relaxed'
               : 'text-sm text-zinc-300 leading-relaxed'
-          }
+          } break-words whitespace-normal`}
         >
           &ldquo;{quote.text || 'No quote text available.'}&rdquo;
         </p>
 
-        <div className="mt-4 pt-3 border-t border-zinc-800/60 flex flex-wrap gap-1.5">
+        <div className="mt-4 pt-3 border-t border-zinc-800/60 flex flex-wrap gap-1.5 min-w-0">
           {tags.map((tag) => (
             <span
               key={`${quote.id}-${tag}`}
-              className="text-xs text-zinc-500 border border-zinc-800 rounded px-2 py-0.5"
+              className="text-xs text-zinc-500 border border-zinc-800 rounded px-2 py-0.5 break-words whitespace-normal"
             >
               #{String(tag).replace(/\s+/g, '_').toLowerCase()}
             </span>
           ))}
           {evidenceScore !== null && (
-            <span className="text-xs text-zinc-500 border border-zinc-800 rounded px-2 py-0.5">
+            <span className="text-xs text-zinc-500 border border-zinc-800 rounded px-2 py-0.5 break-words whitespace-normal">
               Evidence {evidenceScore}
             </span>
           )}
@@ -246,7 +246,7 @@ export default function ControversyAccordion({ data }) {
   if (!topics.length || !quotes.length) return null
 
   return (
-    <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 md:p-5">
+    <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-hidden p-4 md:p-5">
       <div className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 pb-4 pt-4 mt-16 mb-6">
         <div className="flex items-center gap-2 mb-1.5">
           <Orbit size={14} className="text-zinc-500" />
