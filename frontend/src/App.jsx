@@ -19,14 +19,12 @@ export default function App() {
   const { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit } = usePulse()
   const [activeClaimId, setActiveClaimId] = useState(null)
   const [activeAspect, setActiveAspect] = useState(null)
-  const [focusAnchorId, setFocusAnchorId] = useState(null)
   const [traceOpen, setTraceOpen] = useState(false)
 
   useEffect(() => {
     const firstClaimId = report?.claimEvidenceMap?.[0]?.claimId ?? null
     setActiveClaimId(firstClaimId)
     setActiveAspect(null)
-    setFocusAnchorId(null)
   }, [report])
 
   useEffect(() => {
@@ -51,6 +49,13 @@ export default function App() {
       : quickTake[0]
         ? 'The line above is the primary conclusion. Use the dashboard to validate confidence and volatility.'
         : 'Run another query to generate a new public opinion snapshot.')
+  const handleAnchorSelect = (anchorId) => {
+    if (!anchorId) return
+    const target = document.getElementById(anchorId)
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
 
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
@@ -146,54 +151,46 @@ export default function App() {
           {/* Complete-only sections — staggered fade-in */}
           {isComplete && (
             <>
-              <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
-                <SentimentChart
-                  redditSentiment={report.redditSentiment}
-                  twitterSentiment={report.twitterSentiment}
-                  platformDiff={report.platformDiff}
-                />
+              <div className="space-y-16 md:space-y-24">
+                <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
+                  <SentimentChart
+                    redditSentiment={report.redditSentiment}
+                    twitterSentiment={report.twitterSentiment}
+                    platformDiff={report.platformDiff}
+                  />
+                </div>
+
+                <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+                  <CampBattleBoard campDistribution={report.campDistribution} />
+                </div>
+
+                <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
+                  <ControversyAccordion
+                    items={controversyItems}
+                    report={report}
+                    claimEvidenceMap={report.claimEvidenceMap}
+                    activeClaimId={activeClaimId}
+                    activeAspect={activeAspect}
+                    onAspectSelect={setActiveAspect}
+                  />
+                </div>
               </div>
 
-              <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
-                <CampBattleBoard campDistribution={report.campDistribution} />
-              </div>
-
-              <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
-                <ControversyAccordion
-                  items={controversyItems}
-                  report={report}
-                  claimEvidenceMap={report.claimEvidenceMap}
-                  activeClaimId={activeClaimId}
-                  activeAspect={activeAspect}
-                  onAspectSelect={setActiveAspect}
-                />
-              </div>
-
-              <div className="animate-fade-up" style={{ animationDelay: '160ms' }}>
+              <div className="animate-fade-up mt-16" style={{ animationDelay: '160ms' }}>
                 <RevisionDeltaPanel
                   revisionDelta={report.revisionDelta}
                   critique={report.critique}
                   revisionAnchors={report.revisionAnchors}
-                  onAnchorSelect={setFocusAnchorId}
+                  onAnchorSelect={handleAnchorSelect}
                 />
               </div>
 
-              <div className="animate-fade-up" style={{ animationDelay: '220ms' }}>
+              <div className="animate-fade-up mt-8" style={{ animationDelay: '220ms' }}>
                 <SynthesisReport
                   synthesis={report.synthesis}
                   critique={report.critique}
-                  debateTriggered={report.debateTriggered}
-                  quickTake={report.quickTake}
-                  controversyTopics={report.controversyTopics}
-                  flipSignals={report.flipSignals}
                   revisionDelta={report.revisionDelta}
-                  claimEvidenceMap={report.claimEvidenceMap}
-                  claimAnnotations={report.claimAnnotations}
-                  riskFlags={report.riskFlags}
                   revisionAnchors={report.revisionAnchors}
-                  focusAnchorId={focusAnchorId}
-                  activeClaimId={activeClaimId}
-                  onClaimSelect={setActiveClaimId}
                 />
               </div>
             </>
