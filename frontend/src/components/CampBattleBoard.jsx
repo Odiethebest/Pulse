@@ -72,7 +72,7 @@ export default function CampBattleBoard({ campDistribution }) {
   const activeCamp = hoveredCamp ?? defaultCamp
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4">
+    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-4 py-6 pb-8">
       <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
         Camp Battle
       </p>
@@ -80,7 +80,7 @@ export default function CampBattleBoard({ campDistribution }) {
         This is the primary split view for stance distribution across the full report.
       </p>
 
-      <div className="rounded-xl border border-[#2a2a2a] bg-[#111111] p-3">
+      <div className="rounded-xl border border-[#2a2a2a] bg-[#111111] p-3 pb-4">
         <div className="h-6 w-full rounded-lg overflow-hidden flex border border-[#2a2a2a]">
           <Segment
             campKey="support"

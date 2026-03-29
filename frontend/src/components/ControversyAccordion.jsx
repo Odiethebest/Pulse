@@ -86,8 +86,8 @@ function QuoteCard({ quote, topicNameMap, isHero = false }) {
     .map((id) => topicNameMap.get(id))
     .filter(Boolean)
   const cardClass = isHero
-    ? 'bg-zinc-900/60 border-zinc-700/50 md:col-span-2 lg:col-span-2'
-    : 'bg-zinc-900/40 border-zinc-800/80'
+    ? 'col-span-1 bg-zinc-900/60 border-zinc-700/50 md:col-span-2 lg:col-span-2'
+    : 'col-span-1 bg-zinc-900/40 border-zinc-800/80'
 
   return (
     <motion.article

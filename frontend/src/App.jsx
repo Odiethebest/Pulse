@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Sparkles } from 'lucide-react'
 import { usePulse } from './hooks/usePulse'
 import { keepAlive } from './lib/api'
 import SearchBar from './components/SearchBar'
@@ -117,7 +118,7 @@ export default function App() {
               confidenceBreakdown={report?.confidenceBreakdown ?? null}
             />
             {isComplete && primaryBiasConcern && (
-              <InlineCriticAlert message={primaryBiasConcern} />
+              <InlineCriticAlert message={primaryBiasConcern} className="-mt-4 rounded-t-none border-t border-zinc-800" />
             )}
           </div>
 
@@ -125,14 +126,16 @@ export default function App() {
             <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4" style={{ animationDelay: '160ms' }}>
               <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
               {quickTake.length > 0 ? (
-                <ul className="space-y-1.5">
-                  {quickTake.slice(0, 3).map((line, i) => (
-                    <li key={i} className="stagger-1 text-sm text-[#d1d5db] leading-relaxed flex items-start gap-2">
-                      <span className="text-[#3b82f6] mt-1">•</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="bg-zinc-900/40 rounded-xl border-l-4 border-indigo-500/70 p-6">
+                  <div className="space-y-3">
+                    {quickTake.slice(0, 3).map((line, i) => (
+                      <div key={i} className="stagger-1 flex items-start gap-3">
+                        <Sparkles size={15} className="text-indigo-400 mt-0.5 shrink-0" />
+                        <p className="text-zinc-300 leading-relaxed text-sm">{line}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <p className="text-sm text-[#6b7280]">Building recap from ongoing agent outputs...</p>
               )}
@@ -161,7 +164,7 @@ export default function App() {
                 <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
                   <CampBattleBoard campDistribution={report.campDistribution} />
                   {primaryEvidenceGap && (
-                    <InlineCriticAlert message={primaryEvidenceGap} />
+                    <InlineCriticAlert message={primaryEvidenceGap} className="-mt-4 rounded-t-none border-t border-zinc-800" />
                   )}
                 </div>
 
