@@ -26,7 +26,7 @@ public class PulseController {
         String locale = normalizeLocale(request.locale());
         log.info("POST /pulse/analyze (or /api/pulse/analyze) topic='{}', runId='{}', locale='{}'",
                 request.topic(), request.runId(), locale);
-        return orchestrator.analyze(request.topic(), request.runId());
+        return orchestrator.analyze(request.topic(), request.runId(), locale);
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

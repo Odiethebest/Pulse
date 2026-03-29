@@ -66,12 +66,17 @@ public class PulseOrchestrator {
     private int minClaimEvidenceCoverage;
 
     public PulseReport analyze(String topic) {
-        return analyze(topic, null);
+        return analyze(topic, null, "en-US");
     }
 
     public PulseReport analyze(String topic, String requestedRunId) {
+        return analyze(topic, requestedRunId, "en-US");
+    }
+
+    public PulseReport analyze(String topic, String requestedRunId, String locale) {
+        String normalizedLocale = resolveLocale(locale);
         String runId = resolveRunId(requestedRunId);
-        log.info("Starting analysis for topic: {}, runId={}", topic, runId);
+        log.info("Starting analysis for topic: {}, runId={}, locale={}", topic, runId, normalizedLocale);
 
         publisher.registerRun(runId);
         List<AgentEvent> trace = new ArrayList<>();
@@ -240,6 +245,13 @@ public class PulseOrchestrator {
             return UUID.randomUUID().toString();
         }
         return requestedRunId.trim();
+    }
+
+    private String resolveLocale(String locale) {
+        if (locale == null || locale.isBlank()) {
+            return "en-US";
+        }
+        return locale.trim();
     }
 
     private <T> T scoped(String runId, Supplier<T> supplier) {
