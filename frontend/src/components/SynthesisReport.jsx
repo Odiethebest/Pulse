@@ -5,6 +5,7 @@ import {
   RefreshCcw,
   ShieldAlert,
 } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 
 function normalizeList(items = []) {
@@ -64,6 +65,27 @@ function healthTone(count) {
   return 'text-rose-200/80 border-rose-500/20 bg-rose-500/5'
 }
 
+function ActionItemsList({ items }) {
+  if (items.length === 0) {
+    return <p className="font-mono text-xs text-emerald-300/80 break-words whitespace-normal">No open integrity action items for this run.</p>
+  }
+
+  return (
+    <ul className="space-y-1.5">
+      {items.map((item, index) => (
+        <li
+          key={`${item.label}-${index}`}
+          className="flex items-start gap-2 text-sm text-zinc-400 leading-relaxed min-w-0"
+        >
+          <span className={`h-1.5 w-1.5 rounded-full mt-1.5 shrink-0 ${item.dot}`} />
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-600 mt-0.5 shrink-0">{item.label}</span>
+          <span className="flex-1 min-w-0 break-words whitespace-normal">{item.text}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function SynthesisReport({
   synthesis,
   critique,
@@ -71,6 +93,7 @@ export default function SynthesisReport({
   revisionAnchors = [],
 }) {
   const [open, setOpen] = useState(false)
+  const [mobileActionOpen, setMobileActionOpen] = useState(false)
   const sections = useMemo(() => parseSections(synthesis), [synthesis])
   const reporterNote = compactText(sanitizeMarkdownBlock(sections['Reporter Note']), 180)
   const biasConcerns = normalizeList(critique?.biasConcerns || [])
@@ -160,22 +183,35 @@ export default function SynthesisReport({
             <p className="text-[11px] text-zinc-600">{actionItems.length} open</p>
           </div>
 
-          {actionItems.length > 0 ? (
-            <ul className="space-y-1.5">
-              {actionItems.map((item, index) => (
-                <li
-                  key={`${item.label}-${index}`}
-                  className="flex items-start gap-2 text-sm text-zinc-400 leading-relaxed min-w-0"
+          <div className="hidden md:block">
+            <ActionItemsList items={actionItems} />
+          </div>
+
+          <div className="md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileActionOpen((value) => !value)}
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors"
+            >
+              <span>View Detailed Logs</span>
+              <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-200 ${mobileActionOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <AnimatePresence initial={false}>
+              {mobileActionOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 280, damping: 26 }}
+                  className="overflow-hidden"
                 >
-                  <span className={`h-1.5 w-1.5 rounded-full mt-1.5 shrink-0 ${item.dot}`} />
-                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-600 mt-0.5 shrink-0">{item.label}</span>
-                  <span className="flex-1 min-w-0 break-words whitespace-normal">{item.text}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="font-mono text-xs text-emerald-300/80 break-words whitespace-normal">No open integrity action items for this run.</p>
-          )}
+                  <div className="mt-3">
+                    <ActionItemsList items={actionItems} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts'
+import { FileText, GitBranch, Layers, Scale, Shield } from 'lucide-react'
 import {
   buildSnapshotReadout,
   clampScore,
@@ -66,6 +67,29 @@ function metricTone(value) {
   }
 }
 
+function metricStatus(value) {
+  if (value === null) return null
+  if (value >= 75) {
+    return {
+      label: 'Robust',
+      shell: 'bg-emerald-500/10 text-emerald-400',
+      dot: 'bg-emerald-400',
+    }
+  }
+  if (value >= 45) {
+    return {
+      label: 'Average',
+      shell: 'bg-amber-500/10 text-amber-400',
+      dot: 'bg-amber-400',
+    }
+  }
+  return {
+    label: 'Needs Depth',
+    shell: 'bg-rose-500/10 text-rose-400',
+    dot: 'bg-rose-400',
+  }
+}
+
 function radarRows(breakdown) {
   return [
     { name: 'Coverage', value: clampScore(breakdown?.coverage) ?? 0 },
@@ -99,8 +123,17 @@ function RadarTooltip({ active, payload }) {
   )
 }
 
+function metricIcon(name) {
+  if (name === 'Coverage') return Layers
+  if (name === 'Diversity') return GitBranch
+  if (name === 'Agreement') return Scale
+  if (name === 'Evidence') return FileText
+  return Shield
+}
+
 function DetailCard({ row }) {
   const tone = metricTone(row.value)
+  const status = metricStatus(row.value)
   const width = row.value ?? 0
   const slug = row.name.toLowerCase()
 
@@ -110,8 +143,16 @@ function DetailCard({ row }) {
       className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 transition-colors hover:bg-zinc-900/60"
     >
       <div className="flex items-center justify-between gap-2 mb-2">
-        <p className="text-sm font-medium text-zinc-100">{row.name}</p>
-        <p className={`text-2xl leading-none font-bold ${tone.text}`}>{row.value ?? '--'}</p>
+        <p className="text-xs sm:text-sm font-medium text-zinc-100">{row.name}</p>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <p className={`text-xl md:text-2xl leading-none font-bold ${tone.text}`}>{row.value ?? '--'}</p>
+          {status && (
+            <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium ${status.shell}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+              {status.label}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden mb-3">
@@ -130,6 +171,34 @@ function DetailCard({ row }) {
       </div>
 
       <p className="text-xs text-zinc-400 leading-relaxed">{row.desc}</p>
+    </div>
+  )
+}
+
+function CompactMetric({ row }) {
+  const tone = metricTone(row.value)
+  const status = metricStatus(row.value)
+  const slug = row.name.toLowerCase()
+  const Icon = metricIcon(row.name)
+
+  return (
+    <div
+      data-testid={`metric-compact-${slug}`}
+      className="flex items-start gap-3 p-3 bg-zinc-900 border border-zinc-800 rounded-lg min-w-0"
+    >
+      <Icon size={18} className="w-5 h-5 text-zinc-400 shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-zinc-400 truncate">{row.name}</p>
+        <div className="mt-1 flex items-center gap-1.5 min-w-0">
+          <p className={`text-lg leading-none font-bold ${tone.text}`}>{row.value ?? '--'}</p>
+          {status && (
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] leading-none ${status.shell}`}>
+              <span className={`w-1 h-1 rounded-full ${status.dot}`} />
+              {status.label}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -160,7 +229,7 @@ export default function DramaScoreboard({
       aria-label="confidence-profile-dashboard"
       className="rounded-2xl border border-zinc-800 bg-zinc-900/30 overflow-hidden"
     >
-      <div className="p-1 md:p-2">
+      <div className="p-4 md:p-2">
         <div className="flex items-center justify-between gap-2 mb-5">
           <div>
             <p className="text-zinc-500 text-xs uppercase tracking-[0.16em] mb-1 font-medium">Confidence Profile</p>
@@ -175,7 +244,7 @@ export default function DramaScoreboard({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 pb-5 border-b border-white/5">
-          <div className="lg:col-span-2 bg-transparent border-none rounded-none p-5 flex flex-col justify-center">
+          <div className="lg:col-span-2 bg-transparent border-none rounded-none p-4 md:p-5 flex flex-col justify-center">
             <div
               className="text-white text-6xl md:text-7xl font-extrabold leading-none tracking-tight"
               style={{ textShadow: '0 0 22px rgba(56,189,248,0.26)' }}
@@ -210,9 +279,9 @@ export default function DramaScoreboard({
             )}
           </div>
 
-          <div className="lg:col-span-3 relative min-h-[280px]">
+          <div className="lg:col-span-3 relative min-h-48 lg:min-h-[280px]">
             <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_35%_35%,rgba(34,211,238,0.13),transparent_58%)]" />
-            <div className="h-[280px] w-full relative">
+            <div className="h-48 lg:h-[280px] w-full relative">
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart data={radarData} outerRadius="85%">
                   <PolarGrid stroke="rgba(255,255,255,0.09)" />
@@ -231,7 +300,13 @@ export default function DramaScoreboard({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 md:gap-4 mt-5">
+        <div className="grid grid-cols-2 gap-3 pt-2 pb-2 md:hidden">
+          {cards.map((row) => (
+            <CompactMetric key={row.name} row={row} />
+          ))}
+        </div>
+
+        <div className="hidden md:grid md:grid-cols-6 gap-3 md:gap-4 mt-5">
           {cards.map((row, index) => (
             <div
               key={row.name}

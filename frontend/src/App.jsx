@@ -240,20 +240,20 @@ export default function App() {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="pulse-content flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8"
+          className="pulse-content flex flex-col gap-5 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8"
         >
 
-          <div className="drama-module animate-fade-up bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-6 overflow-hidden" style={{ animationDelay: '20ms' }}>
+          <div className="drama-module animate-fade-up bg-indigo-900/10 md:bg-indigo-500/5 border border-indigo-500/20 rounded-lg md:rounded-xl p-3 md:p-6 overflow-hidden" style={{ animationDelay: '20ms' }}>
             <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
               Frontline Verdict
             </p>
-            <h2 className="text-lg md:text-xl font-serif text-indigo-50 leading-relaxed break-words whitespace-normal">
+            <h2 className="text-base md:text-xl font-serif text-indigo-50 leading-relaxed break-words whitespace-normal">
               {parseCitations(heroLine, citationSources)}
             </h2>
-            <p className="text-sm text-indigo-100/75 leading-relaxed mt-2 break-words whitespace-normal">
+            <p className="text-xs md:text-sm text-indigo-100/75 leading-relaxed mt-1.5 md:mt-2 break-words whitespace-normal">
               {parseCitations(heroSubline, citationSources)}
             </p>
-            <p className="text-xs text-indigo-200/50 mt-3 break-words whitespace-normal">Camp split percentages are centralized in Camp Battle below.</p>
+            <p className="text-[11px] md:text-xs text-indigo-200/50 mt-2 md:mt-3 break-words whitespace-normal">Camp split percentages are centralized in Camp Battle below.</p>
           </div>
 
           <motion.div className="drama-module" {...revealProps}>
@@ -269,7 +269,7 @@ export default function App() {
           {recapLines.length > 0 && (
             <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden px-5 md:px-6 pt-4 md:pt-5 pb-5 md:pb-6" style={{ animationDelay: '160ms' }}>
               <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
-              <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-6">
+              <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-4 md:p-6">
                 <div className="space-y-3">
                   {recapLines.map((line, i) => (
                     <div key={i} className="stagger-1 flex items-start gap-3">
@@ -284,7 +284,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="space-y-6 md:space-y-8">
+          <div className="space-y-5 md:space-y-8">
             <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
               <SentimentChart
                 redditSentiment={report.redditSentiment}
@@ -326,7 +326,7 @@ export default function App() {
         </div>
       )}
 
-      {isGenerating && (
+      {isGenerating ? (
         <button
           type="button"
           onClick={cancelRun}
@@ -334,9 +334,7 @@ export default function App() {
         >
           Stop capture (Esc)
         </button>
-      )}
-
-      {shouldRenderDashboard && !isGenerating && (
+      ) : shouldRenderDashboard && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 p-1.5 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-full shadow-2xl z-50">
           <button
             type="button"

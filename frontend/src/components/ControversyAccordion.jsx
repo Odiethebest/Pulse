@@ -98,9 +98,9 @@ function TopicChip({ topic, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-4 py-2 cursor-pointer transition-colors inline-flex items-center gap-2 ${chipClass}`}
+      className={`shrink-0 rounded-full px-3 py-1.5 md:px-4 md:py-2 cursor-pointer transition-colors inline-flex items-center gap-2 ${chipClass}`}
     >
-      <span className="text-sm capitalize">{topic.name}</span>
+      <span className="text-xs md:text-sm capitalize truncate max-w-[220px]">{topic.name}</span>
       <span className="w-5 h-1 rounded-full bg-zinc-700 overflow-hidden">
         <span
           className={`h-full block ${heatTone(topic.heat)}`}
@@ -116,7 +116,7 @@ function PlatformToggle({ platform, active, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-1.5 border transition-colors inline-flex items-center gap-1.5 text-xs ${
+      className={`shrink-0 rounded-full px-3 py-1.5 border transition-colors inline-flex items-center gap-1.5 text-xs ${
         active
           ? 'bg-zinc-100 text-zinc-900 border-transparent'
           : 'bg-zinc-900/50 border-zinc-800 text-zinc-500'
@@ -246,38 +246,48 @@ export default function ControversyAccordion({ data }) {
   if (!topics.length || !quotes.length) return null
 
   return (
-    <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-hidden p-4 md:p-5">
-      <div className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 pb-4 pt-4 mt-16 mb-6">
-        <div className="flex items-center gap-2 mb-1.5">
+    <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-visible md:overflow-hidden p-0 md:p-5">
+      <div className="sticky top-0 z-30 md:z-20 pt-4 pb-3 md:pb-4 bg-zinc-950/70 md:bg-zinc-950/80 backdrop-blur-xl md:backdrop-blur-md border-b border-zinc-800/50 md:border-white/5 px-4 md:px-0 md:mt-16 md:mb-6">
+        <div className="flex items-center gap-2 mb-2 md:mb-1.5">
           <Orbit size={14} className="text-zinc-500" />
-          <p className="text-xs uppercase tracking-widest text-zinc-500 font-medium">Controversy Lenses</p>
+          <p className="text-[11px] font-bold tracking-widest text-zinc-500 uppercase">Controversy Lenses</p>
         </div>
-        <p className="text-sm text-zinc-400 mb-4">Select a lens and inspect the raw signal feed without hidden folders.</p>
+        <p className="hidden md:block text-sm text-zinc-400 mb-4">Select a lens and inspect the raw signal feed without hidden folders.</p>
 
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setActiveTopic(null)}
-            className={`rounded-full px-4 py-2 cursor-pointer transition-colors text-sm ${
-              activeTopic === null
-                ? 'bg-zinc-100 text-zinc-900 border-transparent font-medium'
-                : 'bg-zinc-900/50 border border-zinc-800 text-zinc-400'
-            }`}
+        <div className="relative">
+          <div
+            className="flex flex-nowrap md:flex-wrap overflow-x-auto md:overflow-visible whitespace-nowrap md:whitespace-normal scrollbar-hide overscroll-x-contain [&::-webkit-scrollbar]:hidden [scrollbar-width:none] gap-2 pr-8 md:pr-0"
+            style={{
+              WebkitMaskImage: 'linear-gradient(to right, black 85%, transparent 100%)',
+              maskImage: 'linear-gradient(to right, black 85%, transparent 100%)',
+            }}
           >
-            All Topics
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTopic(null)}
+              className={`shrink-0 rounded-full px-3 py-1.5 md:px-4 md:py-2 cursor-pointer transition-colors text-xs md:text-sm ${
+                activeTopic === null
+                  ? 'bg-zinc-100 text-zinc-900 border-transparent font-medium'
+                  : 'bg-zinc-900/50 border border-zinc-800 text-zinc-400'
+              }`}
+            >
+              All Topics
+            </button>
 
-          {topics.map((topic) => (
-            <TopicChip
-              key={topic.id}
-              topic={topic}
-              active={activeTopic === topic.id}
-              onClick={() => setActiveTopic(topic.id)}
-            />
-          ))}
+            {topics.map((topic) => (
+              <TopicChip
+                key={topic.id}
+                topic={topic}
+                active={activeTopic === topic.id}
+                onClick={() => setActiveTopic(topic.id)}
+              />
+            ))}
+
+          </div>
+          <div className="pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l from-zinc-950/95 to-transparent" />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center md:flex-wrap gap-3 md:gap-2 mt-3">
           <PlatformToggle
             platform="Reddit"
             active={activePlatforms.includes('Reddit')}
@@ -291,41 +301,43 @@ export default function ControversyAccordion({ data }) {
         </div>
       </div>
 
-      {filteredQuotes.length > 0 ? (
-        <motion.div className="columns-1 md:columns-2 lg:columns-3 gap-6 mt-2">
-          <AnimatePresence mode="popLayout">
-            {displayedQuotes.map((quote) => (
-              <QuoteCard
-                key={quote.id}
-                quote={quote}
-                topicNameMap={topicNameMap}
-              />
-            ))}
-          </AnimatePresence>
-        </motion.div>
-      ) : (
-        <motion.div
-          layout
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-          className="border border-zinc-800 rounded-xl p-8 text-center"
-        >
-          <p className="text-sm text-zinc-500">No signals under the current topic and platform filters.</p>
-        </motion.div>
-      )}
+      <div id="signal-feed" className="px-4 md:px-0 pt-4 md:pt-0 pb-5 md:pb-0">
+        {filteredQuotes.length > 0 ? (
+          <motion.div className="columns-1 sm:columns-2 lg:columns-3 gap-4 md:gap-6 mt-1 md:mt-2">
+            <AnimatePresence mode="popLayout">
+              {displayedQuotes.map((quote) => (
+                <QuoteCard
+                  key={quote.id}
+                  quote={quote}
+                  topicNameMap={topicNameMap}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        ) : (
+          <motion.div
+            layout
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            className="border border-zinc-800 rounded-xl p-8 text-center"
+          >
+            <p className="text-sm text-zinc-500">No signals under the current topic and platform filters.</p>
+          </motion.div>
+        )}
 
-      {canLoadMore && (
-        <button
-          type="button"
-          onClick={() => setVisibleCount((count) => count + LOAD_STEP)}
-          className="w-full md:w-auto mx-auto mt-8 px-6 py-3 rounded-full border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50 transition-all flex items-center justify-center gap-2"
-        >
-          <span>Load More</span>
-          <ChevronDown size={16} />
-        </button>
-      )}
+        {canLoadMore && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + LOAD_STEP)}
+            className="w-full md:w-auto mx-auto mt-8 px-6 py-3 rounded-full border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50 transition-all flex items-center justify-center gap-2"
+          >
+            <span>Load More</span>
+            <ChevronDown size={16} />
+          </button>
+        )}
+      </div>
     </section>
   )
 }
