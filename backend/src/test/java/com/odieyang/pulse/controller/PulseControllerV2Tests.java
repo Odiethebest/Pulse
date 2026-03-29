@@ -54,6 +54,15 @@ class PulseControllerV2Tests {
                 .andExpect(jsonPath("$.revisionAnchors[0].anchorId").value("rev-1"));
     }
 
+    @Test
+    void analyzeShouldAcceptLocaleField() throws Exception {
+        mockMvc.perform(post("/api/pulse/analyze")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AnalyzeBody("topic", "run-1", "zh-CN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.topic").value("topic"));
+    }
+
     private PulseReport sampleReport() {
         SentimentResult redditSentiment = new SentimentResult(
                 "reddit",
@@ -139,7 +148,11 @@ class PulseControllerV2Tests {
         );
     }
 
-    private record AnalyzeBody(String topic) {}
+    private record AnalyzeBody(String topic, String runId, String locale) {
+        AnalyzeBody(String topic) {
+            this(topic, null, null);
+        }
+    }
 
     private static class StubPulseOrchestrator extends PulseOrchestrator {
         private final PulseReport report;

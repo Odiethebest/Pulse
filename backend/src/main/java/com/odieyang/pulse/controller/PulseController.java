@@ -23,8 +23,9 @@ public class PulseController {
 
     @PostMapping("/analyze")
     public PulseReport analyze(@RequestBody AnalyzeRequest request) {
-        log.info("POST /pulse/analyze (or /api/pulse/analyze) topic='{}', runId='{}'",
-                request.topic(), request.runId());
+        String locale = normalizeLocale(request.locale());
+        log.info("POST /pulse/analyze (or /api/pulse/analyze) topic='{}', runId='{}', locale='{}'",
+                request.topic(), request.runId(), locale);
         return orchestrator.analyze(request.topic(), request.runId());
     }
 
@@ -33,5 +34,12 @@ public class PulseController {
         return publisher.stream(runId);
     }
 
-    record AnalyzeRequest(String topic, String runId) {}
+    private String normalizeLocale(String locale) {
+        if (locale == null || locale.isBlank()) {
+            return "en-US";
+        }
+        return locale.trim();
+    }
+
+    record AnalyzeRequest(String topic, String runId, String locale) {}
 }
