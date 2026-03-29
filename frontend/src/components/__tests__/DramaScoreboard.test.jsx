@@ -58,6 +58,6 @@ describe('DramaScoreboard', () => {
     )
 
     expect(screen.getByText('Pending')).toBeInTheDocument()
-    expect(screen.getByText('Run analysis to compute confidence.')).toBeInTheDocument()
+    expect(screen.getByText('Confidence explanation will appear after analysis completes.')).toBeInTheDocument()
   })
 })

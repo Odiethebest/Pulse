@@ -8,6 +8,7 @@ import {
 } from 'recharts'
 import { FileText, GitBranch, Layers, Scale, Shield } from 'lucide-react'
 import {
+  buildConfidenceDimensionReason,
   buildSnapshotReadout,
   clampScore,
   CONFIDENCE_MAP,
@@ -107,7 +108,7 @@ function detailRows(breakdown, metrics) {
       name: row.label === 'Evidence Support' ? 'Evidence' : row.label,
       value,
       tags: row.drivers.map((driver) => `${metricLabel(driver)} ${clampScore(metrics?.[driver]) ?? '--'}`),
-      desc: row.summary,
+      desc: buildConfidenceDimensionReason(row.key, value, metrics),
     }
   })
 }
