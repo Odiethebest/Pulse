@@ -330,28 +330,32 @@ export default function App() {
         <button
           type="button"
           onClick={cancelRun}
-          className="fixed bottom-8 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-sm font-medium bg-rose-600/90 text-white hover:bg-rose-500 transition-colors shadow-2xl z-50"
+          className="fixed bottom-32 sm:bottom-8 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-sm font-medium bg-rose-600/90 text-white hover:bg-rose-500 transition-colors shadow-2xl z-50"
         >
           Stop capture (Esc)
         </button>
       ) : shouldRenderDashboard && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 p-1.5 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-full shadow-2xl z-50">
+        <div
+          className="fixed bottom-32 sm:bottom-8 pulse-frosted-chip left-1/2 -translate-x-1/2 w-[calc(100vw-1.5rem)] sm:w-auto max-w-[24rem] sm:max-w-none flex items-center justify-center gap-2 sm:gap-3 p-1.5 rounded-full z-50"
+        >
           <button
             type="button"
             onClick={handleExportShare}
-            className="px-4 py-2 rounded-full text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors inline-flex items-center gap-2"
+            className="flex-1 sm:flex-none min-w-0 px-3 sm:px-4 py-2 rounded-full text-xs sm:text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap"
           >
             <Share2 size={14} />
             <Download size={14} />
-            <span>Export / Share</span>
+            <span className="sm:hidden">Share</span>
+            <span className="hidden sm:inline">Export / Share</span>
           </button>
           <button
             type="button"
             onClick={handleNewPulseQuery}
-            className="px-5 py-2 rounded-full text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)] inline-flex items-center gap-1.5"
+            className="flex-1 sm:flex-none min-w-0 px-4 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)] inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
           >
             <Plus size={15} />
-            <span>New Pulse Query</span>
+            <span className="sm:hidden">New Query</span>
+            <span className="hidden sm:inline">New Pulse Query</span>
           </button>
         </div>
       )}

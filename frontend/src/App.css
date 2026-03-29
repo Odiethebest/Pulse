@@ -19,6 +19,16 @@
   z-index: 1;
 }
 
+.pulse-frosted-chip {
+  background: rgba(18, 21, 29, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 .pulse-topbar {
   position: fixed;
   top: 14px;
