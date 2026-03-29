@@ -62,4 +62,32 @@ describe('ControversyAccordion', () => {
     expect(screen.queryByText('No signals under the current topic and platform filters.')).not.toBeInTheDocument()
     expect(screen.getByText(/Lol. Hit a nerve here have we/i)).toBeInTheDocument()
   })
+
+  it('uses progressive disclosure with load more control', async () => {
+    render(
+      <ControversyAccordion
+        data={{
+          topics: [{ id: 't1', name: 'leadership perception', heat: 70 }],
+          quotes: Array.from({ length: 8 }, (_, index) => ({
+            id: `q-${index + 1}`,
+            platform: index % 2 === 0 ? 'Reddit' : 'Twitter',
+            sentiment: index % 3 === 0 ? 'positive' : 'negative',
+            evidenceScore: 70 + index,
+            text: `Quote ${index + 1} about leadership perception`,
+            topicIds: ['t1'],
+          })),
+        }}
+      />
+    )
+
+    expect(screen.getByText(/quote 1 about leadership perception/i)).toBeInTheDocument()
+    expect(screen.queryByText(/quote 7 about leadership perception/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/quote 7 about leadership perception/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
+  })
 })

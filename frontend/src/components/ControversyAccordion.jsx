@@ -1,6 +1,9 @@
-import { Hash, MessageSquare, Orbit } from 'lucide-react'
+import { ChevronDown, Hash, MessageSquare, Orbit } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+const INITIAL_VISIBLE_COUNT = 6
+const LOAD_STEP = 6
 
 function heatTone(heat) {
   if (heat >= 70) return 'bg-rose-400'
@@ -76,12 +79,15 @@ function PlatformToggle({ platform, active, onClick }) {
   )
 }
 
-function QuoteCard({ quote, topicNameMap }) {
+function QuoteCard({ quote, topicNameMap, isHero = false }) {
   const platform = normalizePlatform(quote.platform)
   const sentimentClass = sentimentTone(quote.sentiment)
   const tags = (quote.topicIds ?? [])
     .map((id) => topicNameMap.get(id))
     .filter(Boolean)
+  const cardClass = isHero
+    ? 'bg-zinc-900/60 border-zinc-700/50 md:col-span-2 lg:col-span-2'
+    : 'bg-zinc-900/40 border-zinc-800/80'
 
   return (
     <motion.article
@@ -90,7 +96,7 @@ function QuoteCard({ quote, topicNameMap }) {
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 hover:border-zinc-700 transition-colors"
+      className={`border rounded-xl p-5 hover:border-zinc-700 transition-colors ${cardClass}`}
     >
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
@@ -102,7 +108,7 @@ function QuoteCard({ quote, topicNameMap }) {
         </span>
       </div>
 
-      <p className="text-zinc-200 text-sm leading-relaxed">
+      <p className={`text-zinc-200 ${isHero ? 'text-base md:text-lg leading-relaxed' : 'text-sm leading-relaxed'}`}>
         &ldquo;{quote.text || 'No quote text available.'}&rdquo;
       </p>
 
@@ -130,6 +136,7 @@ export default function ControversyAccordion({ data }) {
   const quotes = data?.quotes ?? []
   const [activeTopic, setActiveTopic] = useState(null)
   const [activePlatforms, setActivePlatforms] = useState(['Reddit', 'Twitter'])
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
 
   const topicNameMap = useMemo(
     () => new Map(topics.map((topic) => [topic.id, topic.name])),
@@ -145,6 +152,15 @@ export default function ControversyAccordion({ data }) {
     }),
     [quotes, activeTopic, activePlatforms]
   )
+  const displayedQuotes = useMemo(
+    () => filteredQuotes.slice(0, visibleCount),
+    [filteredQuotes, visibleCount]
+  )
+  const canLoadMore = visibleCount < filteredQuotes.length
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_COUNT)
+  }, [activeTopic, activePlatforms])
 
   const togglePlatform = (platform) => {
     setActivePlatforms((prev) => (
@@ -158,53 +174,60 @@ export default function ControversyAccordion({ data }) {
 
   return (
     <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 md:p-5">
-      <div className="flex items-center gap-2 mb-1.5">
-        <Orbit size={14} className="text-zinc-500" />
-        <p className="text-xs uppercase tracking-widest text-zinc-500 font-medium">Controversy Lenses</p>
-      </div>
-      <p className="text-sm text-zinc-400 mb-4">Select a lens and inspect the raw signal feed without hidden folders.</p>
+      <div className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-md border-b border-white/5 pb-4 pt-4 mb-6">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Orbit size={14} className="text-zinc-500" />
+          <p className="text-xs uppercase tracking-widest text-zinc-500 font-medium">Controversy Lenses</p>
+        </div>
+        <p className="text-sm text-zinc-400 mb-4">Select a lens and inspect the raw signal feed without hidden folders.</p>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          type="button"
-          onClick={() => setActiveTopic(null)}
-          className={`rounded-full px-4 py-2 cursor-pointer transition-colors text-sm ${
-            activeTopic === null
-              ? 'bg-zinc-100 text-zinc-900 border-transparent font-medium'
-              : 'bg-zinc-900/50 border border-zinc-800 text-zinc-400'
-          }`}
-        >
-          All Topics
-        </button>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setActiveTopic(null)}
+            className={`rounded-full px-4 py-2 cursor-pointer transition-colors text-sm ${
+              activeTopic === null
+                ? 'bg-zinc-100 text-zinc-900 border-transparent font-medium'
+                : 'bg-zinc-900/50 border border-zinc-800 text-zinc-400'
+            }`}
+          >
+            All Topics
+          </button>
 
-        {topics.map((topic) => (
-          <TopicChip
-            key={topic.id}
-            topic={topic}
-            active={activeTopic === topic.id}
-            onClick={() => setActiveTopic(topic.id)}
+          {topics.map((topic) => (
+            <TopicChip
+              key={topic.id}
+              topic={topic}
+              active={activeTopic === topic.id}
+              onClick={() => setActiveTopic(topic.id)}
+            />
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <PlatformToggle
+            platform="Reddit"
+            active={activePlatforms.includes('Reddit')}
+            onClick={() => togglePlatform('Reddit')}
           />
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 mb-6">
-        <PlatformToggle
-          platform="Reddit"
-          active={activePlatforms.includes('Reddit')}
-          onClick={() => togglePlatform('Reddit')}
-        />
-        <PlatformToggle
-          platform="Twitter"
-          active={activePlatforms.includes('Twitter')}
-          onClick={() => togglePlatform('Twitter')}
-        />
+          <PlatformToggle
+            platform="Twitter"
+            active={activePlatforms.includes('Twitter')}
+            onClick={() => togglePlatform('Twitter')}
+          />
+        </div>
       </div>
 
       {filteredQuotes.length > 0 ? (
         <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <AnimatePresence mode="popLayout">
-            {filteredQuotes.map((quote) => (
-              <QuoteCard key={quote.id} quote={quote} topicNameMap={topicNameMap} />
+            {displayedQuotes.map((quote, index) => (
+              <QuoteCard
+                key={quote.id}
+                quote={quote}
+                topicNameMap={topicNameMap}
+                isHero={index === 0}
+              />
             ))}
           </AnimatePresence>
         </motion.div>
@@ -219,6 +242,17 @@ export default function ControversyAccordion({ data }) {
         >
           <p className="text-sm text-zinc-500">No signals under the current topic and platform filters.</p>
         </motion.div>
+      )}
+
+      {canLoadMore && (
+        <button
+          type="button"
+          onClick={() => setVisibleCount((count) => count + LOAD_STEP)}
+          className="w-full md:w-auto mx-auto mt-8 px-6 py-3 rounded-full border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50 transition-all flex items-center justify-center gap-2"
+        >
+          <span>Load More</span>
+          <ChevronDown size={16} />
+        </button>
       )}
     </section>
   )
