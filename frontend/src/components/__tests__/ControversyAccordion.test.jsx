@@ -1,9 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import ControversyAccordion from '../ControversyAccordion'
 
 describe('ControversyAccordion', () => {
-  it('filters signal feed by topic and platform toggles', () => {
+  it('filters signal feed by topic and platform toggles', async () => {
     render(
       <ControversyAccordion
         data={{
@@ -49,7 +49,9 @@ describe('ControversyAccordion', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /political future/i }))
     expect(screen.getByText(/majority believes he.s a good leader/i)).toBeInTheDocument()
-    expect(screen.queryByText(/hit a nerve here have we/i)).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText(/hit a nerve here have we/i)).not.toBeInTheDocument()
+    })
     expect(screen.getByText(/far-right fascist/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /reddit/i }))

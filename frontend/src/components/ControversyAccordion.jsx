@@ -1,4 +1,5 @@
 import { Hash, MessageSquare, Orbit } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 
 function heatTone(heat) {
@@ -83,7 +84,14 @@ function QuoteCard({ quote, topicNameMap }) {
     .filter(Boolean)
 
   return (
-    <article className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 hover:border-zinc-700 transition-colors">
+    <motion.article
+      layout
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+      className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 hover:border-zinc-700 transition-colors"
+    >
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
           {platformIcon(platform)}
@@ -113,7 +121,7 @@ function QuoteCard({ quote, topicNameMap }) {
           </span>
         )}
       </div>
-    </article>
+    </motion.article>
   )
 }
 
@@ -193,15 +201,24 @@ export default function ControversyAccordion({ data }) {
       </div>
 
       {filteredQuotes.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredQuotes.map((quote) => (
-            <QuoteCard key={quote.id} quote={quote} topicNameMap={topicNameMap} />
-          ))}
-        </div>
+        <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <AnimatePresence mode="popLayout">
+            {filteredQuotes.map((quote) => (
+              <QuoteCard key={quote.id} quote={quote} topicNameMap={topicNameMap} />
+            ))}
+          </AnimatePresence>
+        </motion.div>
       ) : (
-        <div className="border border-zinc-800 rounded-xl p-8 text-center">
+        <motion.div
+          layout
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+          className="border border-zinc-800 rounded-xl p-8 text-center"
+        >
           <p className="text-sm text-zinc-500">No signals under the current topic and platform filters.</p>
-        </div>
+        </motion.div>
       )}
     </section>
   )
