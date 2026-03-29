@@ -12,8 +12,11 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 @Component
 @RequiredArgsConstructor
@@ -27,6 +30,8 @@ public class SynthesisAgent {
             "(?is).*(?:public\\s+perception|discourse|debate)\\s+of\\s+(?:there\\s+(?:is|are|was|were)|that\\s+|whether\\s+|it\\s+is\\s+).*");
     private static final Pattern ROBOTIC_TRANSITION_PATTERN = Pattern.compile(
             "(?is).*(?:The consensus is\\s+[^.]+,\\s*so one strong catalyst|Because this debate\\s+[^.]+,\\s*it can quickly).*");
+    private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(?:Q)?(\\d{1,3})\\]");
+    private static final Pattern LAZY_CITATION_LOOP_PATTERN = Pattern.compile("(?is).*(?:\\[(?:Q)?1\\]\\s*\\[(?:Q)?2\\]).*(?:\\[(?:Q)?1\\]\\s*\\[(?:Q)?2\\]).*");
     private static final List<String> RAW_DUMP_MARKERS = List.of(
             "=== evidence bank",
             "=== reddit posts",
@@ -60,11 +65,20 @@ public class SynthesisAgent {
             4. EXPLICITLY ACTION CRITIC FEEDBACK:
                - If Critic feedback contains evidence gaps or bias concerns, your revised text MUST address them directly.
                - Embed representative quote evidence naturally.
+            5. CITATION MANDATE:
+               - Every factual claim, percentage, or sentiment described in your summary MUST include at least one inline citation using source ids, for example [3] or [12].
+               - Citations MUST map exactly to the provided "Source [n]" evidence lines.
+            6. PROHIBIT LAZINESS:
+               - DO NOT lazily default to [1] and [2].
+               - You must analyze the entire source list and cite the specific ids that actually support each claim.
+            7. DIVERSIFY EVIDENCE:
+               - CITATION QUOTA: use a minimum of 5 distinct source ids across the final response when at least 5 sources are provided.
+               - Do not repeat the same two ids in every section.
 
             Translation rules:
             - No raw query strings in final text. Convert query-like topic text into natural entity phrasing such as "public perception of [entity]" or "discourse around [entity]".
             - Keep every section concise, concrete, and evidence-led.
-            - Every core claim in Lead and Frontline Clash must include at least one evidence tag from the Evidence Bank, for example [Q1] [Q2].
+            - Every core claim in Lead and Frontline Clash must include at least one evidence citation from Source [n], for example [4] [11].
             - Hide the math and show the meaning. Never print raw score patterns such as "45/100", "heat at 45", or "flip risk is 65".
             - Translate Heat and Flip Risk scores into natural language:
               Heat <= 30: quiet or niche discussion
@@ -76,27 +90,17 @@ public class SynthesisAgent {
             - Use contrastive syntax in Frontline Clash. Prefer forms like "While ... , ...", "Despite ... , ...", or "In contrast, ...".
             - Describe platform mismatch with action verbs, e.g., "Reddit dissects/scrutinizes ..." versus "Twitter amplifies/fixates on ...".
             - Do not use vague filler such as "overall", "many people believe", or "it sparked broad discussion" without specifics.
-            - Use only supplied evidence tags and do not invent new tags.
+            - Use only supplied source ids and do not invent ids.
             - Never output raw data blocks or labels such as "EVIDENCE BANK", "REDDIT POSTS", or "TWITTER/X POSTS".
             - Do not include any section outside this template.
 
-            <Examples>
-            [BAD EXAMPLE - DO NOT DO THIS]
-            Input:
-            - Query: "Peoples Attuide of Steve Jobs"
-            - Topic: "leadership style" (Heat: 85)
-            - Support: 65%, Oppose: 25%
-            Output:
-            While about 65% still defend public perception of Peoples Attuide of Steve Jobs, a vocal 25% actively push back. The main debate is leadership style. (fierce and explosive).
+            --- EXAMPLE OF BAD OUTPUT (LAZY) ---
+            "While 68% defend MJ, 22% push back. [1] [2] The dispute has moved to a quiet stage. [1] [2] The consensus is relatively stable. [1] [2]"
+            REASON: This is lazy and unacceptable. It only cites sources 1 and 2, ignoring the rest of the dataset.
 
-            [GOOD EXAMPLE - COPY THIS STYLE]
-            Input:
-            - Query: "Peoples Attuide of Steve Jobs"
-            - Topic: "leadership style" (Heat: 85)
-            - Support: 65%, Oppose: 25%
-            Output:
-            While a 65% majority continues to fiercely defend Steve Jobs' legacy, a highly vocal 25% opposition actively pushes back against his hero-worship. At the heart of this divide is a fierce and explosive debate over his leadership style, with critics pointing to his uncompromising methods.
-            </Examples>
+            --- EXAMPLE OF GOOD OUTPUT (DIVERSE CITATIONS) ---
+            "While 68% defend MJ, 22% push back. [3] [7] The dispute has moved to a quiet stage with 'greatest artist' becoming the flashpoint. [12] [15] The current consensus looks stable, though Twitter amplifies the GOAT debate. [2] [18]"
+            REASON: Excellent. It uses diverse, accurate source ids spread across the entire dataset.
             """;
 
     private static final String REVISION_SYSTEM_PROMPT = """
@@ -125,6 +129,9 @@ public class SynthesisAgent {
             - remove trailing adjective tags in parentheses
             - vary transitions and avoid repetitive template sentences
             - preserve readability and strict section structure
+            - citation mandate: every factual claim must cite Source [n] ids
+            - citation quota: use at least 5 distinct source ids when 5 or more are provided
+            - prohibit laziness: do not repeatedly cite only [1] and [2]
             """;
 
     private final ChatClient chatClient;
@@ -175,7 +182,8 @@ public class SynthesisAgent {
             String userPrompt = buildUserPrompt(reddit, twitter, redditSentiment, twitterSentiment, critique, coreEntity);
             String systemPrompt = isRevision ? REVISION_SYSTEM_PROMPT : SYSTEM_PROMPT;
             String result = generate(systemPrompt, userPrompt);
-            List<String> violations = collectCriticalViolations(result);
+            int availableSourceCount = countAvailableSources(redditSentiment, twitterSentiment);
+            List<String> violations = collectCriticalViolations(result, availableSourceCount);
             if (!violations.isEmpty()) {
                 String retryPrompt = buildRetryPrompt(userPrompt, result, violations);
                 result = generate(systemPrompt, retryPrompt);
@@ -243,7 +251,7 @@ public class SynthesisAgent {
         sb.append("Twitter/X main focus: %s\n".formatted(topControversy(twitterSentiment)));
         sb.append("\n");
 
-        sb.append("=== EVIDENCE BANK (use [Qn] tags in claims) ===\n");
+        sb.append("=== EVIDENCE SOURCES (cite with [n] exactly) ===\n");
         appendEvidenceBank(sb, redditSentiment, twitterSentiment);
         sb.append("\n");
 
@@ -264,6 +272,10 @@ public class SynthesisAgent {
     }
 
     private List<String> collectCriticalViolations(String content) {
+        return collectCriticalViolations(content, 0);
+    }
+
+    private List<String> collectCriticalViolations(String content, int availableSourceCount) {
         List<String> violations = new ArrayList<>();
         if (content == null || content.isBlank()) {
             violations.add("Output is empty.");
@@ -281,6 +293,10 @@ public class SynthesisAgent {
         if (ROBOTIC_TRANSITION_PATTERN.matcher(content).matches()) {
             violations.add("Robotic transition template was found.");
         }
+        if (LAZY_CITATION_LOOP_PATTERN.matcher(content).matches()) {
+            violations.add("Lazy repeated [1] [2] citation loop was found.");
+        }
+        validateCitationDiversity(content, availableSourceCount, violations);
         String lower = content.toLowerCase();
         for (String marker : RAW_DUMP_MARKERS) {
             if (lower.contains(marker)) {
@@ -310,6 +326,9 @@ public class SynthesisAgent {
                 4. Keep six required sections exactly.
                 5. Avoid robotic templates like "The consensus is..., so..." and "Because this debate..., it can...".
                 6. Integrate critic feedback directly into narrative with representative quote evidence tags.
+                7. Use citations in [n] format that map to Source [n].
+                8. Use at least 5 distinct citation ids when at least 5 sources are available.
+                9. Do not repeat only [1] [2] across sections.
 
                 === PREVIOUS INVALID OUTPUT (DO NOT COPY) ===
                 %s
@@ -322,7 +341,9 @@ public class SynthesisAgent {
         appendQuotes(sb, twitterSentiment, "Twitter/X", index);
         if (index[0] == 1) {
             sb.append("No quote evidence available.\n");
+            return;
         }
+        sb.append("Total Sources: ").append(index[0] - 1).append("\n");
     }
 
     private void appendQuotes(StringBuilder sb, SentimentResult sentiment, String platform, int[] index) {
@@ -333,15 +354,49 @@ public class SynthesisAgent {
             if (quote == null || quote.text() == null || quote.text().isBlank()) {
                 continue;
             }
-            sb.append("[Q").append(index[0]++).append("] ")
-                    .append(platform)
-                    .append(" | ")
+            sb.append("Source [").append(index[0]++).append("]: ")
+                    .append("(").append(platform).append(") ")
                     .append("camp=").append(quote.camp() == null ? "unknown" : quote.camp())
-                    .append(" | ")
+                    .append("; ")
                     .append("url=").append(quote.url() == null ? "" : quote.url())
-                    .append(" | ")
-                    .append("quote=").append(quote.text())
+                    .append("; ")
+                    .append("text=\"").append(quote.text()).append("\"")
                     .append("\n");
+        }
+    }
+
+    private int countAvailableSources(SentimentResult redditSentiment, SentimentResult twitterSentiment) {
+        return countQuotes(redditSentiment) + countQuotes(twitterSentiment);
+    }
+
+    private int countQuotes(SentimentResult sentiment) {
+        if (sentiment == null || sentiment.representativeQuotes() == null) {
+            return 0;
+        }
+        int count = 0;
+        for (Quote quote : sentiment.representativeQuotes()) {
+            if (quote != null && quote.text() != null && !quote.text().isBlank()) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    private void validateCitationDiversity(String content, int availableSourceCount, List<String> violations) {
+        Matcher matcher = CITATION_PATTERN.matcher(content);
+        Set<Integer> citationIds = new HashSet<>();
+        while (matcher.find()) {
+            try {
+                citationIds.add(Integer.parseInt(matcher.group(1)));
+            } catch (NumberFormatException ignored) {
+                // ignore malformed ids, regex already constrains numeric shape
+            }
+        }
+
+        int requiredDistinct = Math.min(5, Math.max(availableSourceCount, 0));
+        if (requiredDistinct > 0 && citationIds.size() < requiredDistinct) {
+            violations.add("Citation diversity is too low: found %d distinct ids, expected at least %d."
+                    .formatted(citationIds.size(), requiredDistinct));
         }
     }
 

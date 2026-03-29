@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Download, Plus, Share2, Sparkles } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { usePulse } from './hooks/usePulse'
 import { keepAlive } from './lib/api'
@@ -9,23 +9,17 @@ import SentimentChart from './components/SentimentChart'
 import ControversyAccordion from './components/ControversyAccordion'
 import SynthesisReport from './components/SynthesisReport'
 import CampBattleBoard from './components/CampBattleBoard'
-import GlobalRunStatus from './components/GlobalRunStatus'
-import AgentTraceDrawer from './components/AgentTraceDrawer'
 import AgentTheaterLoading from './components/AgentTheaterLoading'
+import { parseCitations } from './components/SemanticSourceChip'
 import { buildControversyBoardData } from './lib/controversyMapper'
 import './App.css'
 
 export default function App() {
   useEffect(() => keepAlive(), [])
 
-  const { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit } = usePulse()
-  const [traceOpen, setTraceOpen] = useState(false)
+  const { status, agentEvents, report, liveText, metrics, agentSummary, submit, cancelRun } = usePulse()
   const [showLoadingTheater, setShowLoadingTheater] = useState(false)
   const [dashboardReady, setDashboardReady] = useState(false)
-
-  useEffect(() => {
-    setTraceOpen(false)
-  }, [runId])
 
   useEffect(() => {
     if (status === 'loading') {
@@ -63,12 +57,69 @@ export default function App() {
 
   const isIdle     = status === 'idle'
   const isLoading  = status === 'loading'
+  const isGenerating = isLoading
   const isComplete = status === 'complete'
   const isError    = status === 'error'
   const shouldRenderDashboard = isComplete && dashboardReady && !showLoadingTheater
   const shouldRenderErrorState = isError && dashboardReady && !showLoadingTheater
   const quickTake  = report?.quickTake ?? []
+  const recapLines = useMemo(() => {
+    const normalize = (value) => String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+    const excluded = new Set([normalize(quickTake[0]), normalize(quickTake[1])].filter(Boolean))
+    const seen = new Set(excluded)
+    const lines = []
+
+    const addLine = (line) => {
+      const cleaned = String(line ?? '').trim()
+      if (!cleaned) return
+      const key = normalize(cleaned)
+      if (!key || seen.has(key)) return
+      seen.add(key)
+      lines.push(cleaned)
+    }
+
+    addLine(quickTake[2])
+
+    const topTopic = report?.controversyTopics?.[0]
+    if (topTopic?.summary) {
+      addLine(`Flashpoint: ${topTopic.summary}`)
+    } else if (topTopic?.aspect) {
+      addLine(`Flashpoint: ${topTopic.aspect} remains the most contested angle.`)
+    }
+
+    if (report?.platformDiff) {
+      addLine(`Platform split: ${report.platformDiff}`)
+    }
+
+    const topFlipSignal = report?.flipSignals?.[0]
+    if (topFlipSignal?.summary) {
+      addLine(`Watchpoint: ${topFlipSignal.summary}`)
+    }
+
+    for (const line of quickTake) {
+      if (lines.length >= 3) break
+      addLine(line)
+    }
+
+    return lines.slice(0, 3)
+  }, [quickTake, report])
   const controversyBoardData = useMemo(() => buildControversyBoardData(report), [report])
+  const citationSources = useMemo(() => {
+    const mappedQuotes = Array.isArray(controversyBoardData?.quotes)
+      ? controversyBoardData.quotes.filter((quote) => quote?.text)
+      : []
+    if (mappedQuotes.length > 0) return mappedQuotes
+
+    const reddit = (report?.redditSentiment?.representativeQuotes ?? []).map((quote) => ({
+      ...quote,
+      platform: quote?.platform || 'Reddit',
+    }))
+    const twitter = (report?.twitterSentiment?.representativeQuotes ?? []).map((quote) => ({
+      ...quote,
+      platform: quote?.platform || 'Twitter',
+    }))
+    return [...reddit, ...twitter].filter((quote) => quote?.text)
+  }, [report, controversyBoardData])
   const primaryBiasConcern = report?.critique?.biasConcerns?.[0] ?? null
   const primaryEvidenceGap = report?.critique?.evidenceGaps?.[0] ?? null
   const revealProps = {
@@ -88,20 +139,72 @@ export default function App() {
       : quickTake[0]
         ? 'The line above is the primary conclusion. Use the dashboard to validate confidence and volatility.'
         : 'Run another query to generate a new public opinion snapshot.')
+
+  useEffect(() => {
+    if (!isGenerating) return undefined
+    const onKeydown = (event) => {
+      if (event.key === 'Escape') {
+        cancelRun()
+      }
+    }
+    window.addEventListener('keydown', onKeydown)
+    return () => window.removeEventListener('keydown', onKeydown)
+  }, [isGenerating, cancelRun])
+
+  const handleExportShare = async () => {
+    if (!report) return
+
+    const title = `Pulse Report${report.topic ? `: ${report.topic}` : ''}`
+    const summary = (report.quickTake || []).join('\n')
+
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title,
+          text: summary || report.topicSummary || 'Pulse report generated.',
+          url: window.location.href,
+        })
+        return
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+      }
+    }
+
+    const exportPayload = {
+      topic: report.topic,
+      generatedAt: new Date().toISOString(),
+      quickTake: report.quickTake,
+      confidenceScore: report.confidenceScore,
+      confidenceBreakdown: report.confidenceBreakdown,
+      campDistribution: report.campDistribution,
+      platformDiff: report.platformDiff,
+      controversyTopics: report.controversyTopics,
+      critique: report.critique,
+      revisionDelta: report.revisionDelta,
+    }
+
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `pulse-report-${(report.topic || 'snapshot').replace(/\s+/g, '-').toLowerCase()}.json`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleNewPulseQuery = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    requestAnimationFrame(() => {
+      const input = document.getElementById('pulse-query-input')
+      input?.focus()
+      input?.select?.()
+    })
+  }
+
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
-      {!isIdle && (
-        <div className="pulse-topbar">
-          <div className="pulse-topbar-inner">
-            <GlobalRunStatus
-              runStatus={status}
-              agentSummary={agentSummary}
-              onOpenTrace={() => setTraceOpen(true)}
-            />
-          </div>
-        </div>
-      )}
-
       {/* SearchBar — transitions from vertically centered to top */}
       <div
         className="pulse-content"
@@ -140,32 +243,17 @@ export default function App() {
           className="pulse-content flex flex-col gap-6 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8"
         >
 
-          <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5 md:p-6 overflow-hidden" style={{ animationDelay: '20ms' }}>
+          <div className="drama-module animate-fade-up bg-indigo-500/5 border border-indigo-500/20 rounded-xl p-6 overflow-hidden" style={{ animationDelay: '20ms' }}>
             <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
               Frontline Verdict
             </p>
-            <h2 className="text-white text-xl md:text-2xl leading-snug font-semibold tracking-tight break-words whitespace-normal">
-              {heroLine}
+            <h2 className="text-lg md:text-xl font-serif text-indigo-50 leading-relaxed break-words whitespace-normal">
+              {parseCitations(heroLine, citationSources)}
             </h2>
-            <p className="text-sm text-[#9ca3af] leading-relaxed mt-2 break-words whitespace-normal">
-              {heroSubline}
+            <p className="text-sm text-indigo-100/75 leading-relaxed mt-2 break-words whitespace-normal">
+              {parseCitations(heroSubline, citationSources)}
             </p>
-            <p className="text-xs text-[#6b7280] mt-3 break-words whitespace-normal">Camp split percentages are centralized in Camp Battle below.</p>
-          </div>
-
-          <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden p-4" style={{ animationDelay: '80ms' }}>
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-              <div className="min-w-0">
-                <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-1 font-medium">Execution Trace</p>
-                <p className="text-sm text-[#9ca3af] break-words whitespace-normal">Execution details are available in the trace drawer and no longer interrupt report reading.</p>
-              </div>
-              <button
-                onClick={() => setTraceOpen(true)}
-                className="text-sm text-[#d1d5db] border border-[#2a2a2a] rounded-lg px-3 py-1.5 hover:bg-[#181818] transition-colors w-fit"
-              >
-                Open Agent Trace
-              </button>
-            </div>
+            <p className="text-xs text-indigo-200/50 mt-3 break-words whitespace-normal">Camp split percentages are centralized in Camp Battle below.</p>
           </div>
 
           <motion.div className="drama-module" {...revealProps}>
@@ -178,15 +266,17 @@ export default function App() {
             />
           </motion.div>
 
-          {quickTake.length > 0 && (
-            <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden p-4" style={{ animationDelay: '160ms' }}>
+          {recapLines.length > 0 && (
+            <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden px-5 md:px-6 pt-4 md:pt-5 pb-5 md:pb-6" style={{ animationDelay: '160ms' }}>
               <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
               <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-6">
                 <div className="space-y-3">
-                  {quickTake.slice(0, 3).map((line, i) => (
+                  {recapLines.map((line, i) => (
                     <div key={i} className="stagger-1 flex items-start gap-3">
                       <Sparkles size={15} className="text-indigo-400 mt-0.5 shrink-0" />
-                      <p className="text-zinc-300 leading-relaxed text-sm break-words whitespace-normal min-w-0">{line}</p>
+                      <p className="text-zinc-300 leading-relaxed text-sm break-words whitespace-normal min-w-0">
+                        {parseCitations(line, citationSources)}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -194,7 +284,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="space-y-16 md:space-y-24">
+          <div className="space-y-6 md:space-y-8">
             <div className="animate-fade-up" style={{ animationDelay: '0ms' }}>
               <SentimentChart
                 redditSentiment={report.redditSentiment}
@@ -210,14 +300,14 @@ export default function App() {
               />
             </motion.div>
 
-            <motion.div {...revealProps}>
+            <div>
               <ControversyAccordion
                 data={controversyBoardData}
               />
-            </motion.div>
+            </div>
           </div>
 
-          <motion.div className="mt-8" {...revealProps}>
+          <motion.div {...revealProps}>
             <SynthesisReport
               synthesis={report.synthesis}
               critique={report.critique}
@@ -236,15 +326,37 @@ export default function App() {
         </div>
       )}
 
-      <AgentTraceDrawer
-        open={traceOpen}
-        onClose={() => setTraceOpen(false)}
-        runId={runId}
-        runStatus={status}
-        agentEvents={agentEvents}
-        liveText={liveText}
-        isLoading={isLoading}
-      />
+      {isGenerating && (
+        <button
+          type="button"
+          onClick={cancelRun}
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-sm font-medium bg-rose-600/90 text-white hover:bg-rose-500 transition-colors shadow-2xl z-50"
+        >
+          Stop capture (Esc)
+        </button>
+      )}
+
+      {shouldRenderDashboard && !isGenerating && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 p-1.5 bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-full shadow-2xl z-50">
+          <button
+            type="button"
+            onClick={handleExportShare}
+            className="px-4 py-2 rounded-full text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors inline-flex items-center gap-2"
+          >
+            <Share2 size={14} />
+            <Download size={14} />
+            <span>Export / Share</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleNewPulseQuery}
+            className="px-5 py-2 rounded-full text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-500 transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)] inline-flex items-center gap-1.5"
+          >
+            <Plus size={15} />
+            <span>New Pulse Query</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }

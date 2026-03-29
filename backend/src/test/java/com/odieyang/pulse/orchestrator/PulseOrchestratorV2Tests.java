@@ -11,6 +11,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -196,6 +200,36 @@ class PulseOrchestratorV2Tests {
         assertTrue(synthesis.contains("## Flip Risk Watch"));
     }
 
+    @Test
+    void quickTakeShouldSpreadCitationsBeyondFirstTwoSources() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new MultiQuoteSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+
+        PulseReport report = orchestrator.analyze("Citation diversity topic");
+        String joinedQuickTake = String.join(" ", report.quickTake());
+        Matcher matcher = Pattern.compile("\\[Q(\\d+)]").matcher(joinedQuickTake);
+        Set<Integer> citationIds = new HashSet<>();
+        while (matcher.find()) {
+            citationIds.add(Integer.parseInt(matcher.group(1)));
+        }
+
+        assertTrue(citationIds.size() >= 5,
+                "Expected at least 5 distinct citations when 5+ sources are available");
+        assertTrue(citationIds.stream().anyMatch(id -> id > 2),
+                "Expected citations beyond [Q1] and [Q2]");
+    }
+
     private PulseOrchestrator buildOrchestrator(
             QueryPlannerAgent queryPlannerAgent,
             RedditAgent redditAgent,
@@ -361,6 +395,47 @@ class PulseOrchestratorV2Tests {
                     0.17,
                     List.of("Credibility"),
                     List.of(new Quote("Twitter quote", "https://x.com/1", "negative", "oppose", 0.7)),
+                    new CampDistribution(0.32, 0.52, 0.16),
+                    List.of(new ControversyTopic("Credibility", 66, "Trust concerns"))
+            );
+        }
+    }
+
+    private static class MultiQuoteSentimentAgent extends SentimentAgent {
+        MultiQuoteSentimentAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public SentimentResult analyze(RawPosts rawPosts) {
+            if ("reddit".equals(rawPosts.platform())) {
+                return new SentimentResult(
+                        "reddit",
+                        0.55,
+                        0.35,
+                        0.10,
+                        List.of("Pricing"),
+                        List.of(
+                                new Quote("Reddit quote 1", "https://reddit.com/r/1", "positive", "support", 0.8),
+                                new Quote("Reddit quote 2", "https://reddit.com/r/2", "neutral", "neutral", 0.7),
+                                new Quote("Reddit quote 3", "https://reddit.com/r/3", "negative", "oppose", 0.75)
+                        ),
+                        new CampDistribution(0.58, 0.30, 0.12),
+                        List.of(new ControversyTopic("Pricing", 70, "Price fairness fight"))
+                );
+            }
+
+            return new SentimentResult(
+                    "twitter",
+                    0.33,
+                    0.50,
+                    0.17,
+                    List.of("Credibility"),
+                    List.of(
+                            new Quote("Twitter quote 1", "https://x.com/1", "negative", "oppose", 0.7),
+                            new Quote("Twitter quote 2", "https://x.com/2", "neutral", "neutral", 0.6),
+                            new Quote("Twitter quote 3", "https://x.com/3", "positive", "support", 0.65)
+                    ),
                     new CampDistribution(0.32, 0.52, 0.16),
                     List.of(new ControversyTopic("Credibility", 66, "Trust concerns"))
             );

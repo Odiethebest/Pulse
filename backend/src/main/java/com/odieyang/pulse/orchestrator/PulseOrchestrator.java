@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -155,6 +156,7 @@ public class PulseOrchestrator {
         int dramaScore = computeDramaScore(heatScore, polarizationScore, controversyTopics);
         List<FlipSignal> flipSignals = chooseFlipSignals(flipRiskResult, critique);
         List<String> revisionDelta = chooseRevisionDelta(critique);
+        List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
         List<ClaimEvidenceLink> claimEvidenceMap = buildClaimEvidenceMap(
                 coreEntity,
                 campDistribution,
@@ -162,13 +164,13 @@ public class PulseOrchestrator {
                 heatScore,
                 flipRiskScore,
                 debateTriggered,
-                redditSentiment,
-                twitterSentiment
+                platformDiff,
+                evidenceUrls
         );
         List<RevisionAnchor> revisionAnchors = buildRevisionAnchors(revisionDelta, claimEvidenceMap);
         List<ClaimAnnotation> claimAnnotations = buildClaimAnnotations(critique, revisionAnchors);
         List<RiskFlag> riskFlags = buildRiskFlags(critique, flipSignals, claimEvidenceMap);
-        List<String> quickTake = buildQuickTake(claimEvidenceMap);
+        List<String> quickTake = buildQuickTake(claimEvidenceMap, evidenceUrls);
         ConfidenceBreakdown confidenceBreakdown = buildConfidenceBreakdown(
                 critique.confidenceScore(),
                 reddit,
@@ -464,10 +466,9 @@ public class PulseOrchestrator {
             int heatScore,
             int flipRiskScore,
             boolean debateTriggered,
-            SentimentResult redditSentiment,
-            SentimentResult twitterSentiment
+            String platformDiff,
+            List<String> evidenceUrls
     ) {
-        List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
         String smoothTopic = coreEntity == null || coreEntity.isBlank() ? "the subject" : coreEntity;
         int supportPct = (int) Math.round(nz(campDistribution.support()) * 100);
         int opposePct = (int) Math.round(nz(campDistribution.oppose()) * 100);
@@ -486,13 +487,13 @@ public class PulseOrchestrator {
         String flipLine = "The current consensus looks %s. %s%s"
                 .formatted(
                 describeFlipRisk(flipRiskScore),
-                buildPlatformDiff(redditSentiment, twitterSentiment),
+                platformDiff,
                 debateTriggered ? " Critic revision has already been applied." : ""
         );
         return List.of(
-                new ClaimEvidenceLink("C1", campLine, pickEvidenceUrls(evidenceUrls, 0, 2)),
-                new ClaimEvidenceLink("C2", heatLine, pickEvidenceUrls(evidenceUrls, 1, 2)),
-                new ClaimEvidenceLink("C3", flipLine, pickEvidenceUrls(evidenceUrls, 2, 2))
+                new ClaimEvidenceLink("C1", campLine, pickEvidenceUrlsForClaim(evidenceUrls, 0, 3)),
+                new ClaimEvidenceLink("C2", heatLine, pickEvidenceUrlsForClaim(evidenceUrls, 1, 3)),
+                new ClaimEvidenceLink("C3", flipLine, pickEvidenceUrlsForClaim(evidenceUrls, 2, 3))
         );
     }
 
@@ -620,11 +621,11 @@ public class PulseOrchestrator {
         return sb.toString();
     }
 
-    private List<String> buildQuickTake(List<ClaimEvidenceLink> claimEvidenceMap) {
+    private List<String> buildQuickTake(List<ClaimEvidenceLink> claimEvidenceMap, List<String> allEvidenceUrls) {
         return claimEvidenceMap.stream()
                 .limit(3)
                 .map(link -> {
-                    String refs = renderEvidenceRefs(link.evidenceUrls());
+                    String refs = renderEvidenceRefs(link.evidenceUrls(), allEvidenceUrls);
                     return refs.isBlank() ? link.claim() : link.claim() + " " + refs;
                 })
                 .toList();
@@ -763,25 +764,83 @@ public class PulseOrchestrator {
                 .forEach(urls::add);
     }
 
-    private List<String> pickEvidenceUrls(List<String> urls, int start, int limit) {
+    private List<String> pickEvidenceUrlsForClaim(List<String> urls, int claimIndex, int claimCount) {
         if (urls.isEmpty()) {
             return List.of();
         }
-        int from = Math.min(start, urls.size() - 1);
-        int to = Math.min(urls.size(), from + limit);
-        return urls.subList(from, to);
+        int targetDistinct = Math.min(Math.max(5, claimCount), urls.size());
+        List<Integer> anchors = pickEvenlySpacedIndexes(urls.size(), targetDistinct);
+        List<String> selected = new ArrayList<>();
+        for (int i = claimIndex; i < anchors.size(); i += claimCount) {
+            selected.add(urls.get(anchors.get(i)));
+        }
+        if (selected.isEmpty()) {
+            selected.add(urls.get(Math.min(claimIndex, urls.size() - 1)));
+        }
+        return selected.stream().distinct().toList();
     }
 
-    private String renderEvidenceRefs(List<String> evidenceUrls) {
+    private List<Integer> pickEvenlySpacedIndexes(int totalSize, int count) {
+        if (totalSize <= 0 || count <= 0) {
+            return List.of();
+        }
+        if (count == 1) {
+            return List.of(0);
+        }
+        List<Integer> indexes = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            double ratio = (double) i / (count - 1);
+            int candidate = (int) Math.round(ratio * (totalSize - 1));
+            if (indexes.isEmpty() || indexes.getLast() != candidate) {
+                indexes.add(candidate);
+            }
+        }
+        for (int i = 0; indexes.size() < count && i < totalSize; i++) {
+            if (!indexes.contains(i)) {
+                indexes.add(i);
+            }
+        }
+        indexes.sort(Integer::compareTo);
+        return indexes;
+    }
+
+    private String renderEvidenceRefs(List<String> evidenceUrls, List<String> allEvidenceUrls) {
         if (evidenceUrls == null || evidenceUrls.isEmpty()) {
             return "";
         }
+
+        LinkedHashSet<String> uniqueUrls = new LinkedHashSet<>();
+        for (String url : evidenceUrls) {
+            if (url != null && !url.isBlank()) {
+                uniqueUrls.add(url);
+            }
+        }
+        if (uniqueUrls.isEmpty()) {
+            return "";
+        }
+
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < evidenceUrls.size(); i++) {
-            if (i > 0) {
+        for (String url : uniqueUrls) {
+            int sourceIndex = allEvidenceUrls == null ? -1 : allEvidenceUrls.indexOf(url);
+            if (sourceIndex < 0) {
+                continue;
+            }
+            if (sb.length() > 0) {
                 sb.append(' ');
             }
-            sb.append("[Q").append(i + 1).append(']');
+            sb.append("[Q").append(sourceIndex + 1).append(']');
+        }
+
+        if (sb.length() > 0) {
+            return sb.toString();
+        }
+
+        int localIndex = 1;
+        for (String ignored : uniqueUrls) {
+            if (localIndex > 1) {
+                sb.append(' ');
+            }
+            sb.append("[Q").append(localIndex++).append(']');
         }
         return sb.toString();
     }
