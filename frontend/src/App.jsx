@@ -6,10 +6,8 @@ import SearchBar from './components/SearchBar'
 import DramaScoreboard from './components/DramaScoreboard'
 import SentimentChart from './components/SentimentChart'
 import ControversyAccordion from './components/ControversyAccordion'
-import InlineCriticAlert from './components/InlineCriticAlert'
 import SynthesisReport from './components/SynthesisReport'
 import CampBattleBoard from './components/CampBattleBoard'
-import RevisionDeltaPanel from './components/RevisionDeltaPanel'
 import GlobalRunStatus from './components/GlobalRunStatus'
 import AgentTraceDrawer from './components/AgentTraceDrawer'
 import { buildControversyBoardData } from './lib/controversyMapper'
@@ -45,14 +43,6 @@ export default function App() {
       : quickTake[0]
         ? 'The line above is the primary conclusion. Use the dashboard to validate confidence and volatility.'
         : 'Run another query to generate a new public opinion snapshot.')
-  const handleAnchorSelect = (anchorId) => {
-    if (!anchorId) return
-    const target = document.getElementById(anchorId)
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }
-
   return (
     <div className="pulse-shell min-h-screen bg-[#0f0f0f] flex flex-col">
       {!isIdle && (
@@ -116,10 +106,8 @@ export default function App() {
               confidenceScore={report?.confidenceScore ?? null}
               debateTriggered={report?.debateTriggered ?? false}
               confidenceBreakdown={report?.confidenceBreakdown ?? null}
+              criticNote={isComplete ? primaryBiasConcern : null}
             />
-            {isComplete && primaryBiasConcern && (
-              <InlineCriticAlert message={primaryBiasConcern} className="-mt-4 rounded-t-none border-t border-zinc-800" />
-            )}
           </div>
 
           {(quickTake.length > 0 || isLoading) && (
@@ -162,10 +150,10 @@ export default function App() {
                 </div>
 
                 <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
-                  <CampBattleBoard campDistribution={report.campDistribution} />
-                  {primaryEvidenceGap && (
-                    <InlineCriticAlert message={primaryEvidenceGap} className="-mt-4 rounded-t-none border-t border-zinc-800" />
-                  )}
+                  <CampBattleBoard
+                    campDistribution={report.campDistribution}
+                    criticNote={primaryEvidenceGap}
+                  />
                 </div>
 
                 <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
@@ -173,15 +161,6 @@ export default function App() {
                     data={controversyBoardData}
                   />
                 </div>
-              </div>
-
-              <div className="animate-fade-up mt-16" style={{ animationDelay: '160ms' }}>
-                <RevisionDeltaPanel
-                  revisionDelta={report.revisionDelta}
-                  critique={report.critique}
-                  revisionAnchors={report.revisionAnchors}
-                  onAnchorSelect={handleAnchorSelect}
-                />
               </div>
 
               <div className="animate-fade-up mt-8" style={{ animationDelay: '220ms' }}>

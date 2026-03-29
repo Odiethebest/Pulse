@@ -14,6 +14,7 @@ import {
   metricLabel,
   normalizeMetrics,
 } from '../lib/metricSemantics'
+import InlineCriticAlert from './InlineCriticAlert'
 
 function confidenceStatus(score) {
   if (score === null) {
@@ -138,6 +139,7 @@ export default function DramaScoreboard({
   confidenceScore,
   debateTriggered,
   confidenceBreakdown,
+  criticNote = null,
 }) {
   const normalizedMetrics = normalizeMetrics(metrics)
   const score = clampScore(confidenceScore)
@@ -154,87 +156,93 @@ export default function DramaScoreboard({
     .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0]
 
   return (
-    <section aria-label="confidence-profile-dashboard" className="rounded-2xl p-1 md:p-2">
-      <div className="flex items-center justify-between gap-2 mb-5">
-        <div>
-          <p className="text-zinc-500 text-xs uppercase tracking-[0.16em] mb-1 font-medium">Confidence Profile</p>
-          <p className="text-sm text-zinc-400">Premium score view linked to narrative drivers and volatility signals.</p>
+    <section
+      aria-label="confidence-profile-dashboard"
+      className="rounded-2xl border border-zinc-800 bg-zinc-900/30 overflow-hidden"
+    >
+      <div className="p-1 md:p-2">
+        <div className="flex items-center justify-between gap-2 mb-5">
+          <div>
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.16em] mb-1 font-medium">Confidence Profile</p>
+            <p className="text-sm text-zinc-400">Premium score view linked to narrative drivers and volatility signals.</p>
+          </div>
+          {debateTriggered && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400 leading-none">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.9)]" />
+              Revised after critic review
+            </span>
+          )}
         </div>
-        {debateTriggered && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400 leading-none">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.9)]" />
-            Revised after critic review
-          </span>
-        )}
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 pb-5 border-b border-white/5">
-        <div className="lg:col-span-2 bg-transparent border-none rounded-none p-5 flex flex-col justify-center">
-          <div
-            className="text-white text-6xl md:text-7xl font-extrabold leading-none tracking-tight"
-            style={{ textShadow: '0 0 22px rgba(56,189,248,0.26)' }}
-          >
-            {score ?? '--'}
-          </div>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-sm text-zinc-400">Confidence</span>
-            <span className={`text-xs rounded-full px-2.5 py-0.5 ${status.tone}`}>{status.label}</span>
-          </div>
-          <p className="text-sm text-zinc-400 leading-relaxed mt-3">{band.note}</p>
-          {(strongestCard || weakestCard) && (
-            <div className="space-y-1.5 mt-4">
-              {strongestCard && (
-                <div className="flex items-center gap-2 text-xs text-zinc-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
-                  <span className="text-zinc-500 uppercase tracking-wide">Strongest:</span>
-                  <span>{strongestCard.name} {strongestCard.value}</span>
-                </div>
-              )}
-              {weakestCard && (
-                <div className="flex items-center gap-2 text-xs text-zinc-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-orange-300 shadow-[0_0_8px_rgba(253,186,116,0.8)]" />
-                  <span className="text-zinc-500 uppercase tracking-wide">Weakest:</span>
-                  <span>{weakestCard.name} {weakestCard.value}</span>
-                </div>
-              )}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 pb-5 border-b border-white/5">
+          <div className="lg:col-span-2 bg-transparent border-none rounded-none p-5 flex flex-col justify-center">
+            <div
+              className="text-white text-6xl md:text-7xl font-extrabold leading-none tracking-tight"
+              style={{ textShadow: '0 0 22px rgba(56,189,248,0.26)' }}
+            >
+              {score ?? '--'}
             </div>
-          )}
-          {snapshotLines.length > 0 && (
-            <p className="text-xs text-zinc-500 leading-relaxed mt-3">{snapshotLines[0]}</p>
-          )}
-        </div>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-sm text-zinc-400">Confidence</span>
+              <span className={`text-xs rounded-full px-2.5 py-0.5 ${status.tone}`}>{status.label}</span>
+            </div>
+            <p className="text-sm text-zinc-400 leading-relaxed mt-3">{band.note}</p>
+            {(strongestCard || weakestCard) && (
+              <div className="space-y-1.5 mt-4">
+                {strongestCard && (
+                  <div className="flex items-center gap-2 text-xs text-zinc-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                    <span className="text-zinc-500 uppercase tracking-wide">Strongest:</span>
+                    <span>{strongestCard.name} {strongestCard.value}</span>
+                  </div>
+                )}
+                {weakestCard && (
+                  <div className="flex items-center gap-2 text-xs text-zinc-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-orange-300 shadow-[0_0_8px_rgba(253,186,116,0.8)]" />
+                    <span className="text-zinc-500 uppercase tracking-wide">Weakest:</span>
+                    <span>{weakestCard.name} {weakestCard.value}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {snapshotLines.length > 0 && (
+              <p className="text-xs text-zinc-500 leading-relaxed mt-3">{snapshotLines[0]}</p>
+            )}
+          </div>
 
-        <div className="lg:col-span-3 relative min-h-[280px]">
-          <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_35%_35%,rgba(34,211,238,0.13),transparent_58%)]" />
-          <div className="h-[280px] w-full relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radarData} outerRadius="85%">
-                <PolarGrid stroke="rgba(255,255,255,0.09)" />
-                <PolarAngleAxis dataKey="name" tick={{ fill: '#a1a1aa', fontSize: 11 }} />
-                <Tooltip content={<RadarTooltip />} />
-                <Radar
-                  dataKey="value"
-                  stroke="#22d3ee"
-                  fill="#0891b2"
-                  fillOpacity={0.4}
-                  strokeWidth={2.2}
-                />
-              </RadarChart>
-            </ResponsiveContainer>
+          <div className="lg:col-span-3 relative min-h-[280px]">
+            <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_35%_35%,rgba(34,211,238,0.13),transparent_58%)]" />
+            <div className="h-[280px] w-full relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadarChart data={radarData} outerRadius="85%">
+                  <PolarGrid stroke="rgba(255,255,255,0.09)" />
+                  <PolarAngleAxis dataKey="name" tick={{ fill: '#a1a1aa', fontSize: 11 }} />
+                  <Tooltip content={<RadarTooltip />} />
+                  <Radar
+                    dataKey="value"
+                    stroke="#22d3ee"
+                    fill="#0891b2"
+                    fillOpacity={0.4}
+                    strokeWidth={2.2}
+                  />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-3 md:gap-4 mt-5">
-        {cards.map((row, index) => (
-          <div
-            key={row.name}
-            className={index < 3 ? 'md:col-span-2' : 'md:col-span-3'}
-          >
-            <DetailCard row={row} />
-          </div>
-        ))}
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 md:gap-4 mt-5">
+          {cards.map((row, index) => (
+            <div
+              key={row.name}
+              className={index < 3 ? 'md:col-span-2' : 'md:col-span-3'}
+            >
+              <DetailCard row={row} />
+            </div>
+          ))}
+        </div>
       </div>
+      {criticNote && <InlineCriticAlert message={criticNote} attached />}
     </section>
   )
 }

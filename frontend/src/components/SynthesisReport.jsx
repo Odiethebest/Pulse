@@ -1,14 +1,11 @@
-import { ChevronDown } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  FileWarning,
+  RefreshCcw,
+  ShieldAlert,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-
-const markdownComponents = {
-  p: ({ children }) => <p className="text-zinc-500 text-sm leading-relaxed mb-3 last:mb-0">{children}</p>,
-  strong: ({ children }) => <strong className="text-zinc-300 font-medium">{children}</strong>,
-  ul: ({ children }) => <ul className="space-y-1.5 mb-3">{children}</ul>,
-  ol: ({ children }) => <ol className="space-y-1.5 mb-3 list-decimal list-inside">{children}</ol>,
-  li: ({ children }) => <li className="text-zinc-500 text-sm leading-relaxed">{children}</li>,
-}
 
 function normalizeList(items = []) {
   const seen = new Set()
@@ -20,6 +17,12 @@ function normalizeList(items = []) {
       seen.add(item)
       return true
     })
+}
+
+function compactText(value, max = 140) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length <= max) return text
+  return `${text.slice(0, max - 1)}…`
 }
 
 function parseSections(markdown) {
@@ -44,6 +47,23 @@ function parseSections(markdown) {
   return sections
 }
 
+function sanitizeMarkdownBlock(text) {
+  return String(text ?? '')
+    .replace(/^[*-]\s+/gm, '')
+    .replace(/\n+/g, ' ')
+    .trim()
+}
+
+function healthTone(count) {
+  if (count === 0) {
+    return 'text-emerald-300/80 border-emerald-500/20 bg-emerald-500/5'
+  }
+  if (count <= 2) {
+    return 'text-amber-200/80 border-amber-500/20 bg-amber-500/5'
+  }
+  return 'text-rose-200/80 border-rose-500/20 bg-rose-500/5'
+}
+
 export default function SynthesisReport({
   synthesis,
   critique,
@@ -52,7 +72,7 @@ export default function SynthesisReport({
 }) {
   const [open, setOpen] = useState(false)
   const sections = useMemo(() => parseSections(synthesis), [synthesis])
-  const reporterNote = sections['Reporter Note'] || ''
+  const reporterNote = compactText(sanitizeMarkdownBlock(sections['Reporter Note']), 180)
   const biasConcerns = normalizeList(critique?.biasConcerns || [])
   const evidenceGaps = normalizeList(critique?.evidenceGaps || [])
   const unsupportedClaims = normalizeList(critique?.unsupportedClaims || [])
@@ -63,10 +83,31 @@ export default function SynthesisReport({
   const anchorNotes = normalizeList(
     (revisionAnchors || []).map((anchor) => `${anchor.title || 'Revision'}: ${anchor.detail || ''}`)
   )
+
+  const healthBadges = useMemo(
+    () => [
+      { key: 'gaps', label: 'Evidence Gaps', count: evidenceGaps.length, icon: AlertTriangle },
+      { key: 'bias', label: 'Bias Concerns', count: biasConcerns.length, icon: ShieldAlert },
+      { key: 'unsupported', label: 'Unsupported Claims', count: unsupportedClaims.length, icon: FileWarning },
+      { key: 'revisions', label: 'Revisions Applied', count: revisionItems.length, icon: RefreshCcw },
+    ],
+    [biasConcerns.length, evidenceGaps.length, revisionItems.length, unsupportedClaims.length]
+  )
+
+  const actionItems = useMemo(
+    () => [
+      ...evidenceGaps.map((text) => ({ label: 'EVIDENCE', text: compactText(text), dot: 'bg-amber-400/80' })),
+      ...biasConcerns.map((text) => ({ label: 'BIAS', text: compactText(text), dot: 'bg-amber-300/80' })),
+      ...unsupportedClaims.map((text) => ({ label: 'CLAIM', text: compactText(text), dot: 'bg-rose-400/80' })),
+      ...(reporterNote ? [{ label: 'REPORTER', text: compactText(reporterNote), dot: 'bg-zinc-500/80' }] : []),
+    ].slice(0, 8),
+    [biasConcerns, evidenceGaps, reporterNote, unsupportedClaims]
+  )
+
   const hiddenGroups = useMemo(
     () => [
       revisionItems.length > 0
-        ? { title: 'Revision Delta', items: revisionItems }
+        ? { title: 'Revision Trace', items: revisionItems }
         : null,
       fluffItems.length > 0
         ? { title: 'Fluff Findings', items: fluffItems }
@@ -77,77 +118,77 @@ export default function SynthesisReport({
     ].filter(Boolean),
     [anchorNotes, fluffItems, revisionItems]
   )
+
   const hasSummary =
-    Boolean(reporterNote)
-    || biasConcerns.length > 0
-    || evidenceGaps.length > 0
-    || unsupportedClaims.length > 0
+    healthBadges.some((item) => item.count > 0)
+    || actionItems.length > 0
     || hiddenGroups.length > 0
 
   if (!hasSummary) return null
 
   return (
-    <section className="border border-zinc-800 rounded-xl bg-zinc-900/30">
+    <section className="border border-zinc-800 rounded-xl bg-zinc-900/30 overflow-hidden">
       {(revisionAnchors || []).map((anchor) => (
         <span key={anchor.anchorId} id={anchor.anchorId} className="block relative -top-20" />
       ))}
 
-      <div className="px-4 md:px-5 pt-4 pb-3 border-b border-zinc-800">
-        <p className="font-mono uppercase tracking-widest text-xs text-zinc-500">AI Transparency &amp; Audit Log</p>
-        <p className="text-zinc-600 text-xs mt-1">Execution summary remains visible. Detailed revisions are collapsible below.</p>
+      <div className="px-4 md:px-5 py-4 border-b border-zinc-800">
+        <p className="font-mono uppercase tracking-[0.18em] text-xs text-zinc-500">Data Integrity &amp; Trust</p>
+        <p className="text-zinc-600 text-xs mt-1">Critic checks are condensed into status badges and a compact action queue.</p>
       </div>
 
-      <div className="px-4 md:px-5 pt-4 pb-5 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <div className="border border-zinc-800 rounded-lg px-3 py-2">
-            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Bias</p>
-            <p className="text-zinc-300 text-sm mt-1">{biasConcerns.length}</p>
-          </div>
-          <div className="border border-zinc-800 rounded-lg px-3 py-2">
-            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Evidence Gaps</p>
-            <p className="text-zinc-300 text-sm mt-1">{evidenceGaps.length}</p>
-          </div>
-          <div className="border border-zinc-800 rounded-lg px-3 py-2">
-            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Unsupported</p>
-            <p className="text-zinc-300 text-sm mt-1">{unsupportedClaims.length}</p>
-          </div>
-          <div className="border border-zinc-800 rounded-lg px-3 py-2">
-            <p className="text-[11px] uppercase tracking-widest text-zinc-600">Revisions</p>
-            <p className="text-zinc-300 text-sm mt-1">{revisionItems.length}</p>
-          </div>
+      <div className="px-4 md:px-5 py-4 space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {healthBadges.map((item) => {
+            const Icon = item.icon
+            return (
+              <div
+                key={item.key}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${healthTone(item.count)}`}
+              >
+                <Icon size={13} />
+                <span>{item.label}</span>
+                <span className="font-semibold">{item.count}</span>
+              </div>
+            )
+          })}
         </div>
 
-        {reporterNote && (
-          <section>
-            <h4 className="text-xs uppercase tracking-widest text-zinc-600 mb-2">Reporter Note</h4>
-            <ReactMarkdown components={markdownComponents}>{reporterNote}</ReactMarkdown>
-          </section>
-        )}
+        <div className="rounded-lg border border-zinc-800 bg-[#0f0f0f] px-3 py-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-500">Action Items</p>
+            <p className="text-[11px] text-zinc-600">{actionItems.length} open</p>
+          </div>
 
-        {unsupportedClaims.length > 0 && (
-          <section>
-            <h4 className="text-xs uppercase tracking-widest text-zinc-600 mb-2">Unsupported Claims Snapshot</h4>
+          {actionItems.length > 0 ? (
             <ul className="space-y-1.5">
-              {unsupportedClaims.slice(0, 3).map((item, index) => (
-                <li key={`unsupported-${index}`} className="text-sm text-zinc-500 leading-relaxed">
-                  {item}
+              {actionItems.map((item, index) => (
+                <li
+                  key={`${item.label}-${index}`}
+                  className="flex items-start gap-2 text-sm text-zinc-400 leading-relaxed"
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full mt-1.5 shrink-0 ${item.dot}`} />
+                  <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-zinc-600 mt-0.5">{item.label}</span>
+                  <span className="flex-1 min-w-0">{item.text}</span>
                 </li>
               ))}
             </ul>
-          </section>
-        )}
+          ) : (
+            <p className="font-mono text-xs text-emerald-300/80">No open integrity action items for this run.</p>
+          )}
+        </div>
       </div>
 
       {hiddenGroups.length > 0 && (
         <>
           <button
             type="button"
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => setOpen((value) => !value)}
             className="w-full flex items-center justify-between px-4 md:px-5 py-3.5 text-left hover:bg-zinc-800/40 transition-colors border-t border-zinc-800"
           >
             <div>
-              <p className="text-zinc-400 text-sm font-medium">Detailed Revision Trace</p>
-              <p className="text-zinc-600 text-xs mt-0.5">Revision Delta and Fluff Findings are stored here.</p>
+              <p className="text-zinc-400 text-sm font-medium">Inspect Detailed Audit Trail</p>
+              <p className="text-zinc-600 text-xs mt-0.5">Granular revision notes and fluff diagnostics.</p>
             </div>
             <ChevronDown
               size={16}

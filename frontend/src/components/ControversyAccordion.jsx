@@ -86,7 +86,7 @@ function QuoteCard({ quote, topicNameMap, isHero = false }) {
     .map((id) => topicNameMap.get(id))
     .filter(Boolean)
   const cardClass = isHero
-    ? 'col-span-1 bg-zinc-900/60 border-zinc-700/50 md:col-span-2 lg:col-span-2'
+    ? 'col-span-1 md:col-span-2 lg:col-span-2 relative overflow-hidden bg-gradient-to-br from-zinc-800/60 to-zinc-900/40 border-zinc-700/50'
     : 'col-span-1 bg-zinc-900/40 border-zinc-800/80'
 
   return (
@@ -98,7 +98,16 @@ function QuoteCard({ quote, topicNameMap, isHero = false }) {
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
       className={`border rounded-xl p-5 hover:border-zinc-700 transition-colors ${cardClass}`}
     >
-      <div className="flex items-center justify-between gap-2 mb-3">
+      {isHero && (
+        <span
+          aria-hidden="true"
+          className="absolute right-4 top-0 text-8xl leading-none text-white/5 font-serif pointer-events-none"
+        >
+          "
+        </span>
+      )}
+
+      <div className="relative z-10 flex items-center justify-between gap-2 mb-3">
         <div className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
           {platformIcon(platform)}
           <span>{platform}</span>
@@ -108,11 +117,17 @@ function QuoteCard({ quote, topicNameMap, isHero = false }) {
         </span>
       </div>
 
-      <p className={`text-zinc-200 ${isHero ? 'text-base md:text-lg leading-relaxed' : 'text-sm leading-relaxed'}`}>
+      <p
+        className={`relative z-10 ${
+          isHero
+            ? 'text-xl md:text-2xl font-serif text-zinc-100 leading-snug'
+            : 'text-sm text-zinc-200 leading-relaxed'
+        }`}
+      >
         &ldquo;{quote.text || 'No quote text available.'}&rdquo;
       </p>
 
-      <div className="mt-4 pt-3 border-t border-zinc-800/60 flex flex-wrap gap-1.5">
+      <div className="relative z-10 mt-4 pt-3 border-t border-zinc-800/60 flex flex-wrap gap-1.5">
         {tags.map((tag) => (
           <span
             key={`${quote.id}-${tag}`}

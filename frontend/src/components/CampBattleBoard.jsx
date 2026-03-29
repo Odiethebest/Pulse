@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import InlineCriticAlert from './InlineCriticAlert'
 
 function clampRatio(value) {
   const n = Number(value ?? 0)
@@ -51,7 +52,8 @@ function Segment({ campKey, ratio, activeCamp, onHover, onLeave }) {
   )
 }
 
-export default function CampBattleBoard({ campDistribution }) {
+export default function CampBattleBoard({ campDistribution, criticNote = null }) {
+  const [hoveredCamp, setHoveredCamp] = useState(null)
   if (!campDistribution) return null
 
   const support = clampRatio(campDistribution.support)
@@ -68,63 +70,65 @@ export default function CampBattleBoard({ campDistribution }) {
     ? (normalized.support >= normalized.neutral ? 'support' : 'neutral')
     : (normalized.oppose >= normalized.neutral ? 'oppose' : 'neutral')
 
-  const [hoveredCamp, setHoveredCamp] = useState(null)
   const activeCamp = hoveredCamp ?? defaultCamp
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-4 py-6 pb-8">
-      <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
-        Camp Battle
-      </p>
-      <p className="text-sm text-[#9ca3af] leading-relaxed mb-3">
-        This is the primary split view for stance distribution across the full report.
-      </p>
+    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden">
+      <div className="px-4 py-6 pb-8">
+        <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
+          Camp Battle
+        </p>
+        <p className="text-sm text-[#9ca3af] leading-relaxed mb-3">
+          This is the primary split view for stance distribution across the full report.
+        </p>
 
-      <div className="rounded-xl border border-[#2a2a2a] bg-[#111111] p-3 pb-4">
-        <div className="h-6 w-full rounded-lg overflow-hidden flex border border-[#2a2a2a]">
-          <Segment
-            campKey="support"
-            ratio={normalized.support}
-            activeCamp={activeCamp}
-            onHover={setHoveredCamp}
-            onLeave={() => setHoveredCamp(null)}
-          />
-          <Segment
-            campKey="oppose"
-            ratio={normalized.oppose}
-            activeCamp={activeCamp}
-            onHover={setHoveredCamp}
-            onLeave={() => setHoveredCamp(null)}
-          />
-          <Segment
-            campKey="neutral"
-            ratio={normalized.neutral}
-            activeCamp={activeCamp}
-            onHover={setHoveredCamp}
-            onLeave={() => setHoveredCamp(null)}
-          />
-        </div>
+        <div className="rounded-xl border border-[#2a2a2a] bg-[#111111] p-3 pb-4">
+          <div className="h-6 w-full rounded-lg overflow-hidden flex border border-[#2a2a2a]">
+            <Segment
+              campKey="support"
+              ratio={normalized.support}
+              activeCamp={activeCamp}
+              onHover={setHoveredCamp}
+              onLeave={() => setHoveredCamp(null)}
+            />
+            <Segment
+              campKey="oppose"
+              ratio={normalized.oppose}
+              activeCamp={activeCamp}
+              onHover={setHoveredCamp}
+              onLeave={() => setHoveredCamp(null)}
+            />
+            <Segment
+              campKey="neutral"
+              ratio={normalized.neutral}
+              activeCamp={activeCamp}
+              onHover={setHoveredCamp}
+              onLeave={() => setHoveredCamp(null)}
+            />
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
-          {['support', 'oppose', 'neutral'].map((campKey) => {
-            const meta = CAMP_META[campKey]
-            return (
-              <div
-                key={campKey}
-                className="border border-[#2a2a2a] rounded-lg px-2.5 py-2 bg-[#0f0f0f]"
-              >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs uppercase tracking-wider text-[#6b7280]">{meta.label}</span>
-                  <span className={`text-sm font-semibold ${meta.textColor}`}>
-                    {pct(normalized[campKey])}
-                  </span>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
+            {['support', 'oppose', 'neutral'].map((campKey) => {
+              const meta = CAMP_META[campKey]
+              return (
+                <div
+                  key={campKey}
+                  className="border border-[#2a2a2a] rounded-lg px-2.5 py-2 bg-[#0f0f0f]"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-xs uppercase tracking-wider text-[#6b7280]">{meta.label}</span>
+                    <span className={`text-sm font-semibold ${meta.textColor}`}>
+                      {pct(normalized[campKey])}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#9ca3af] leading-relaxed">{meta.blurb}</p>
                 </div>
-                <p className="text-xs text-[#9ca3af] leading-relaxed">{meta.blurb}</p>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </div>
+      {criticNote && <InlineCriticAlert message={criticNote} attached />}
     </div>
   )
 }
