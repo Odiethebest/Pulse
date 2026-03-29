@@ -10,22 +10,14 @@ import CampBattleBoard from './components/CampBattleBoard'
 import RevisionDeltaPanel from './components/RevisionDeltaPanel'
 import GlobalRunStatus from './components/GlobalRunStatus'
 import AgentTraceDrawer from './components/AgentTraceDrawer'
-import { buildControversyItems } from './lib/controversyMapper'
+import { buildControversyBoardData } from './lib/controversyMapper'
 import './App.css'
 
 export default function App() {
   useEffect(() => keepAlive(), [])
 
   const { runId, status, agentEvents, report, liveText, metrics, agentSummary, submit } = usePulse()
-  const [activeClaimId, setActiveClaimId] = useState(null)
-  const [activeAspect, setActiveAspect] = useState(null)
   const [traceOpen, setTraceOpen] = useState(false)
-
-  useEffect(() => {
-    const firstClaimId = report?.claimEvidenceMap?.[0]?.claimId ?? null
-    setActiveClaimId(firstClaimId)
-    setActiveAspect(null)
-  }, [report])
 
   useEffect(() => {
     setTraceOpen(false)
@@ -37,7 +29,7 @@ export default function App() {
   const isError    = status === 'error'
   const hasResult  = isLoading || isComplete || isError
   const quickTake  = report?.quickTake ?? []
-  const controversyItems = useMemo(() => buildControversyItems(report), [report])
+  const controversyBoardData = useMemo(() => buildControversyBoardData(report), [report])
   const heroLine = quickTake[0]
     ?? (isLoading
       ? 'Scanning cross platform chatter and extracting the dominant conflict line.'
@@ -166,12 +158,7 @@ export default function App() {
 
                 <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
                   <ControversyAccordion
-                    items={controversyItems}
-                    report={report}
-                    claimEvidenceMap={report.claimEvidenceMap}
-                    activeClaimId={activeClaimId}
-                    activeAspect={activeAspect}
-                    onAspectSelect={setActiveAspect}
+                    data={controversyBoardData}
                   />
                 </div>
               </div>

@@ -1,128 +1,27 @@
-import { ChevronDown, ExternalLink, Hash, MessageSquare } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { collectQuotes } from '../lib/controversyMapper'
+import { Hash, MessageSquare, Orbit } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
-function clampHeat(value) {
-  const n = Number(value ?? 0)
-  if (Number.isNaN(n)) return 0
-  return Math.max(0, Math.min(100, Math.round(n)))
-}
-
-function heatTone(value) {
-  if (value >= 70) return 'bg-rose-400'
-  if (value >= 40) return 'bg-amber-400'
+function heatTone(heat) {
+  if (heat >= 70) return 'bg-rose-400'
+  if (heat >= 50) return 'bg-amber-400'
   return 'bg-cyan-400'
 }
 
-function normalize(value) {
-  return String(value ?? '').toLowerCase()
+function sentimentTone(sentiment) {
+  const value = String(sentiment ?? '').toLowerCase()
+  if (value.includes('pos') || value.includes('support')) {
+    return 'text-emerald-400 bg-emerald-400/10'
+  }
+  if (value.includes('neg') || value.includes('oppose')) {
+    return 'text-rose-400 bg-rose-400/10'
+  }
+  return 'text-zinc-400 bg-zinc-400/10'
 }
 
-function platformKey(value) {
-  const source = normalize(value)
-  if (source.includes('twitter') || source === 'x') return 'Twitter'
+function normalizePlatform(platform) {
+  const value = String(platform ?? '').toLowerCase()
+  if (value.includes('twitter') || value === 'x') return 'Twitter'
   return 'Reddit'
-}
-
-function splitKeywords(value) {
-  return normalize(value)
-    .split(/[^a-z0-9]+/i)
-    .filter((word) => word.length >= 3)
-}
-
-function matchScore(text, keywords) {
-  if (!text || keywords.length === 0) return 0
-  const source = normalize(text)
-  let score = 0
-  for (const keyword of keywords) {
-    if (source.includes(keyword)) score += 1
-  }
-  return score
-}
-
-function dedupeQuotes(quotes) {
-  const seen = new Set()
-  return quotes.filter((quote) => {
-    const key = `${quote.url || ''}::${quote.text || ''}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-function evidenceScore(quote) {
-  if (typeof quote?.evidenceScore === 'number') {
-    return Math.max(0, Math.min(100, Math.round(quote.evidenceScore)))
-  }
-  if (typeof quote?.evidenceWeight === 'number') {
-    return Math.max(0, Math.min(100, Math.round(quote.evidenceWeight * 100)))
-  }
-  return null
-}
-
-function resolveTopicQuotes(item, allQuotes, claimUrls) {
-  const topicQuotes = item?.quotes ?? []
-  const keywords = splitKeywords(item?.aspect || item?.topic || '')
-  const matchedFromAll = allQuotes
-    .map((quote) => ({
-      quote,
-      score: matchScore(`${quote.text} ${quote.url}`, keywords),
-    }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((entry) => entry.quote)
-
-  const fallback = [
-    ...allQuotes.filter((quote) => platformKey(quote.platform) === 'Reddit').slice(0, 1),
-    ...allQuotes.filter((quote) => platformKey(quote.platform) === 'Twitter').slice(0, 1),
-    ...allQuotes.slice(0, 2),
-  ]
-
-  const baseQuotes = dedupeQuotes([
-    ...topicQuotes,
-    ...matchedFromAll,
-    ...fallback,
-  ]).slice(0, 8)
-
-  const claimMatchedQuotes = claimUrls.size > 0
-    ? baseQuotes.filter((quote) => quote?.url && claimUrls.has(quote.url))
-    : []
-
-  const hasClaimFallback = claimUrls.size > 0 && claimMatchedQuotes.length === 0
-  const prioritizedQuotes = claimMatchedQuotes.length > 0
-    ? dedupeQuotes([
-      ...claimMatchedQuotes,
-      ...baseQuotes.filter((quote) => !(quote?.url && claimUrls.has(quote.url))),
-    ])
-    : baseQuotes
-  const visibleQuotes = prioritizedQuotes.slice(0, 6)
-  const redditQuotes = visibleQuotes.filter((quote) => platformKey(quote.platform) === 'Reddit').slice(0, 3)
-  const twitterQuotes = visibleQuotes.filter((quote) => platformKey(quote.platform) === 'Twitter').slice(0, 3)
-
-  return {
-    redditQuotes,
-    twitterQuotes,
-    hasClaimFallback,
-  }
-}
-
-function PillTag({ platform, label }) {
-  const dotClass = platform === 'Reddit' ? 'bg-orange-300' : 'bg-sky-300'
-
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 px-2 py-0.5 text-[11px] text-zinc-400">
-      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-      {label}
-    </span>
-  )
-}
-
-function MetaTag({ children }) {
-  return (
-    <span className="text-xs text-zinc-500 border border-zinc-800 rounded px-2 py-0.5 leading-none">
-      {children}
-    </span>
-  )
 }
 
 function platformIcon(platform) {
@@ -132,205 +31,178 @@ function platformIcon(platform) {
   return <MessageSquare size={13} className="text-orange-300" />
 }
 
-function QuoteCard({ quote, platform, claimMatched }) {
-  const sentiment = quote?.sentiment ? String(quote.sentiment) : 'Neutral'
-  const score = evidenceScore(quote)
+function platformDot(platform) {
+  if (platform === 'Twitter') return 'bg-sky-300'
+  return 'bg-rose-300'
+}
+
+function TopicChip({ topic, active, onClick }) {
+  const chipClass = active
+    ? 'bg-zinc-100 text-zinc-900 border-transparent font-medium'
+    : 'bg-zinc-900/50 border border-zinc-800 text-zinc-400'
 
   return (
-    <article className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-3 flex flex-col gap-2.5">
-      <div className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
-        {platformIcon(platform)}
-        <span>{platform}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-4 py-2 cursor-pointer transition-colors inline-flex items-center gap-2 ${chipClass}`}
+    >
+      <span className="text-sm capitalize">{topic.name}</span>
+      <span className="w-5 h-1 rounded-full bg-zinc-700 overflow-hidden">
+        <span
+          className={`h-full block ${heatTone(topic.heat)}`}
+          style={{ width: `${Math.max(20, Math.min(100, topic.heat))}%` }}
+        />
+      </span>
+    </button>
+  )
+}
+
+function PlatformToggle({ platform, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3 py-1.5 border transition-colors inline-flex items-center gap-1.5 text-xs ${
+        active
+          ? 'bg-zinc-100 text-zinc-900 border-transparent'
+          : 'bg-zinc-900/50 border-zinc-800 text-zinc-500'
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${platformDot(platform)}`} />
+      {platform}
+    </button>
+  )
+}
+
+function QuoteCard({ quote, topicNameMap }) {
+  const platform = normalizePlatform(quote.platform)
+  const sentimentClass = sentimentTone(quote.sentiment)
+  const tags = (quote.topicIds ?? [])
+    .map((id) => topicNameMap.get(id))
+    .filter(Boolean)
+
+  return (
+    <article className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-5 hover:border-zinc-700 transition-colors">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
+          {platformIcon(platform)}
+          <span>{platform}</span>
+        </div>
+        <span className={`text-xs rounded-full px-2 py-0.5 ${sentimentClass}`}>
+          {quote.sentiment || 'Neutral'}
+        </span>
       </div>
 
-      <p className="text-sm text-zinc-200 leading-relaxed">
-        &ldquo;{quote?.text || 'No evidence text available.'}&rdquo;
+      <p className="text-zinc-200 text-sm leading-relaxed">
+        &ldquo;{quote.text || 'No quote text available.'}&rdquo;
       </p>
 
-      <div className="flex flex-wrap gap-1.5 mt-auto">
-        <MetaTag>{sentiment}</MetaTag>
-        {score !== null && <MetaTag>Evidence {score}</MetaTag>}
-        {claimMatched && <MetaTag>Claim Match</MetaTag>}
+      <div className="mt-4 pt-3 border-t border-zinc-800/60 flex flex-wrap gap-1.5">
+        {tags.map((tag) => (
+          <span
+            key={`${quote.id}-${tag}`}
+            className="text-xs text-zinc-500 border border-zinc-800 rounded px-2 py-0.5"
+          >
+            #{String(tag).replace(/\s+/g, '_').toLowerCase()}
+          </span>
+        ))}
+        {typeof quote.evidenceScore === 'number' && (
+          <span className="text-xs text-zinc-500 border border-zinc-800 rounded px-2 py-0.5">
+            Evidence {quote.evidenceScore}
+          </span>
+        )}
       </div>
-
-      {quote?.url && (
-        <a
-          href={quote.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors mt-0.5"
-        >
-          <ExternalLink size={12} />
-          Source
-        </a>
-      )}
     </article>
   )
 }
 
-function PlatformColumn({ platform, quotes, claimUrls }) {
-  return (
-    <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/40 p-3">
-      <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-2.5">
-        {platformIcon(platform)}
-        <span>{platform}</span>
-        <span className="text-zinc-500">({quotes.length})</span>
-      </div>
+export default function ControversyAccordion({ data }) {
+  const topics = data?.topics ?? []
+  const quotes = data?.quotes ?? []
+  const [activeTopic, setActiveTopic] = useState(null)
+  const [activePlatforms, setActivePlatforms] = useState(['Reddit', 'Twitter'])
 
-      {quotes.length > 0 ? (
-        <div className="space-y-2.5">
-          {quotes.map((quote, index) => (
-            <QuoteCard
-              key={`${platform}-${quote.url || quote.text}-${index}`}
-              quote={quote}
-              platform={platform}
-              claimMatched={Boolean(quote.url && claimUrls.has(quote.url))}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-zinc-800 px-3 py-5 text-center">
-          <p className="text-xs text-zinc-500">No representative {platform} quote for this topic.</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function ControversyAccordion({
-  items = [],
-  report = null,
-  claimEvidenceMap = [],
-  activeClaimId = null,
-  activeAspect = null,
-  onAspectSelect = () => {},
-}) {
-  const [openAspect, setOpenAspect] = useState(activeAspect ?? null)
-
-  useEffect(() => {
-    setOpenAspect(activeAspect ?? null)
-  }, [activeAspect])
-
-  const allQuotes = useMemo(() => collectQuotes(report), [report])
-  const selectedClaim = claimEvidenceMap.find((claim) => claim.claimId === activeClaimId) || null
-  const claimUrls = useMemo(() => new Set(selectedClaim?.evidenceUrls ?? []), [selectedClaim])
-
-  const resolvedItems = useMemo(
-    () => items.map((item) => ({
-      ...item,
-      quotePack: resolveTopicQuotes(item, allQuotes, claimUrls),
-    })),
-    [items, allQuotes, claimUrls]
+  const topicNameMap = useMemo(
+    () => new Map(topics.map((topic) => [topic.id, topic.name])),
+    [topics]
   )
 
-  if (!resolvedItems.length) return null
+  const filteredQuotes = useMemo(
+    () => quotes.filter((quote) => {
+      const topicMatch = !activeTopic || (quote.topicIds ?? []).includes(activeTopic)
+      const platform = normalizePlatform(quote.platform)
+      const platformMatch = activePlatforms.includes(platform)
+      return topicMatch && platformMatch
+    }),
+    [quotes, activeTopic, activePlatforms]
+  )
+
+  const togglePlatform = (platform) => {
+    setActivePlatforms((prev) => (
+      prev.includes(platform)
+        ? prev.filter((item) => item !== platform)
+        : [...prev, platform]
+    ))
+  }
+
+  if (!topics.length || !quotes.length) return null
 
   return (
     <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 md:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-zinc-500 font-medium">Controversy Accordion</p>
-          <p className="text-sm text-zinc-400 mt-1">Expand a topic to inspect Reddit and Twitter voices side by side.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {selectedClaim && (
-            <span className="text-xs text-zinc-400 border border-zinc-800 rounded-full px-2 py-0.5">
-              Claim filter {selectedClaim.claimId}
-            </span>
-          )}
-          {openAspect && (
-            <button
-              type="button"
-              onClick={() => {
-                setOpenAspect(null)
-                onAspectSelect(null)
-              }}
-              className="text-xs text-zinc-400 border border-zinc-800 rounded-full px-2 py-0.5 hover:bg-zinc-800/50 transition-colors"
-            >
-              Clear topic filter
-            </button>
-          )}
-        </div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <Orbit size={14} className="text-zinc-500" />
+        <p className="text-xs uppercase tracking-widest text-zinc-500 font-medium">Controversy Lenses</p>
+      </div>
+      <p className="text-sm text-zinc-400 mb-4">Select a lens and inspect the raw signal feed without hidden folders.</p>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setActiveTopic(null)}
+          className={`rounded-full px-4 py-2 cursor-pointer transition-colors text-sm ${
+            activeTopic === null
+              ? 'bg-zinc-100 text-zinc-900 border-transparent font-medium'
+              : 'bg-zinc-900/50 border border-zinc-800 text-zinc-400'
+          }`}
+        >
+          All Topics
+        </button>
+
+        {topics.map((topic) => (
+          <TopicChip
+            key={topic.id}
+            topic={topic}
+            active={activeTopic === topic.id}
+            onClick={() => setActiveTopic(topic.id)}
+          />
+        ))}
       </div>
 
-      <div className="space-y-2.5">
-        {resolvedItems.map((item) => {
-          const aspect = item?.aspect || item?.topic || 'General'
-          const isOpen = openAspect === aspect
-          const heat = clampHeat(item?.heat)
-          const heatClass = heatTone(heat)
-          const { redditQuotes, twitterQuotes, hasClaimFallback } = item.quotePack
-          const platformTags = item.platformTags ?? []
-
-          return (
-            <div
-              key={item.id}
-              className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  const next = isOpen ? null : aspect
-                  setOpenAspect(next)
-                  onAspectSelect(next)
-                }}
-                className="w-full px-3.5 py-3 text-left hover:bg-zinc-800/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
-                      <p className="text-sm font-medium text-zinc-100">{aspect}</p>
-                      <div className="inline-flex items-center gap-2 text-xs text-zinc-400">
-                        <span>Heat {heat}</span>
-                        <span className="w-14 h-1 rounded-full bg-zinc-800 overflow-hidden">
-                          <span className={`h-full block ${heatClass}`} style={{ width: `${heat}%` }} />
-                        </span>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2">{item.summary}</p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="hidden md:flex items-center gap-1">
-                      {platformTags.map((tag) => (
-                        <PillTag key={`${item.id}-${tag.platform}-${tag.label}`} platform={tag.platform} label={tag.label} />
-                      ))}
-                    </div>
-                    <ChevronDown
-                      size={15}
-                      className={`text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-                    />
-                  </div>
-                </div>
-              </button>
-
-              <div
-                className={`grid transition-all duration-300 ease-out ${
-                  isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-                }`}
-              >
-                <div className="overflow-hidden">
-                  <div className="px-3.5 pb-3.5">
-                    <div className="rounded-xl border border-zinc-800 bg-[#0a0a0a] p-3 md:p-4">
-                      {hasClaimFallback && (
-                        <p className="text-xs text-zinc-500 mb-3">
-                          No direct claim evidence matched this topic. Showing closest topic voices.
-                        </p>
-                      )}
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <PlatformColumn platform="Reddit" quotes={redditQuotes} claimUrls={claimUrls} />
-                        <PlatformColumn platform="Twitter" quotes={twitterQuotes} claimUrls={claimUrls} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        })}
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        <PlatformToggle
+          platform="Reddit"
+          active={activePlatforms.includes('Reddit')}
+          onClick={() => togglePlatform('Reddit')}
+        />
+        <PlatformToggle
+          platform="Twitter"
+          active={activePlatforms.includes('Twitter')}
+          onClick={() => togglePlatform('Twitter')}
+        />
       </div>
+
+      {filteredQuotes.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredQuotes.map((quote) => (
+            <QuoteCard key={quote.id} quote={quote} topicNameMap={topicNameMap} />
+          ))}
+        </div>
+      ) : (
+        <div className="border border-zinc-800 rounded-xl p-8 text-center">
+          <p className="text-sm text-zinc-500">No signals under the current topic and platform filters.</p>
+        </div>
+      )}
     </section>
   )
 }

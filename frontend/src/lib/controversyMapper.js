@@ -2,6 +2,12 @@ function normalize(value) {
   return String(value ?? '').toLowerCase()
 }
 
+function clampScore(value) {
+  const n = Number(value ?? 0)
+  if (Number.isNaN(n)) return 0
+  return Math.max(0, Math.min(100, Math.round(n)))
+}
+
 function splitKeywords(value) {
   return normalize(value)
     .split(/[^a-z0-9]+/i)
@@ -45,6 +51,29 @@ function platformKey(value) {
   const source = normalize(value)
   if (source.includes('twitter') || source === 'x') return 'Twitter'
   return 'Reddit'
+}
+
+function normalizeSentiment(quote) {
+  const sentiment = normalize(quote?.sentiment)
+  if (sentiment.includes('pos')) return 'positive'
+  if (sentiment.includes('neg')) return 'negative'
+  if (sentiment.includes('support')) return 'positive'
+  if (sentiment.includes('oppose')) return 'negative'
+
+  const camp = normalize(quote?.camp)
+  if (camp.includes('support')) return 'positive'
+  if (camp.includes('oppose')) return 'negative'
+  return 'neutral'
+}
+
+function extractEvidenceScore(quote) {
+  if (typeof quote?.evidenceScore === 'number') {
+    return clampScore(quote.evidenceScore)
+  }
+  if (typeof quote?.evidenceWeight === 'number') {
+    return clampScore(quote.evidenceWeight * 100)
+  }
+  return null
 }
 
 function dedupeQuotes(quotes) {
@@ -117,4 +146,40 @@ export function buildControversyItems(report) {
       platformTags,
     }
   })
+}
+
+export function buildControversyBoardData(report) {
+  const topicSource = report?.controversyTopics ?? []
+  const topics = topicSource.slice(0, 8).map((topic, index) => ({
+    id: `t${index + 1}`,
+    name: topic?.aspect || `topic ${index + 1}`,
+    heat: clampScore(topic?.heat),
+  }))
+
+  const sourceQuotes = dedupeQuotes(collectQuotes(report))
+  if (topics.length === 0 || sourceQuotes.length === 0) {
+    return { topics: [], quotes: [] }
+  }
+
+  const quotes = sourceQuotes.map((quote, index) => {
+    const matchedTopicIds = topics
+      .filter((topic) => matchScore(`${quote?.text} ${quote?.url}`, splitKeywords(topic.name)) > 0)
+      .map((topic) => topic.id)
+
+    const topicIds = matchedTopicIds.length > 0
+      ? matchedTopicIds
+      : [topics[index % topics.length].id]
+
+    return {
+      id: `q${index + 1}`,
+      platform: platformKey(quote?.platform),
+      sentiment: normalizeSentiment(quote),
+      evidenceScore: extractEvidenceScore(quote),
+      text: quote?.text || 'No quote text available.',
+      topicIds,
+      link: quote?.url || null,
+    }
+  })
+
+  return { topics, quotes }
 }
