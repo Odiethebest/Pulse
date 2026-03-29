@@ -74,7 +74,7 @@ export default function CampBattleBoard({ campDistribution, criticNote = null })
 
   return (
     <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden">
-      <div className="px-4 py-6 pb-8">
+      <div className="p-4 md:p-5">
         <p className="text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
           Camp Battle
         </p>
@@ -82,7 +82,7 @@ export default function CampBattleBoard({ campDistribution, criticNote = null })
           This is the primary split view for stance distribution across the full report.
         </p>
 
-        <div className="rounded-xl border border-[#2a2a2a] bg-[#111111] p-3 pb-4">
+        <div className="rounded-xl border border-[#2a2a2a] bg-[#111111] p-4">
           <div className="h-6 w-full rounded-lg overflow-hidden flex border border-[#2a2a2a]">
             <Segment
               campKey="support"
@@ -113,7 +113,7 @@ export default function CampBattleBoard({ campDistribution, criticNote = null })
               return (
                 <div
                   key={campKey}
-                  className="border border-[#2a2a2a] rounded-lg px-2.5 py-2 bg-[#0f0f0f]"
+                  className="border border-[#2a2a2a] rounded-lg p-3 bg-[#0f0f0f]"
                 >
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-xs uppercase tracking-wider text-[#6b7280]">{meta.label}</span>

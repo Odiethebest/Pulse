@@ -3,7 +3,7 @@ import { AlertTriangle } from 'lucide-react'
 export default function InlineCriticAlert({ message, className = '', attached = false }) {
   if (!message) return null
   const shellClass = attached
-    ? 'flex items-start gap-3 border-t border-amber-500/20 bg-amber-500/5 px-6 py-4 rounded-b-2xl'
+    ? 'flex items-start gap-3 border-t border-amber-500/20 bg-amber-500/5 px-4 md:px-5 py-4 rounded-b-2xl'
     : 'flex items-start gap-3 p-4 rounded-xl bg-amber-500/5 border border-amber-500/10'
 
   return (

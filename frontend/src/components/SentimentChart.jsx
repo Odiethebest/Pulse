@@ -107,7 +107,7 @@ export default function SentimentChart({ redditSentiment, twitterSentiment, plat
     ]
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-5 py-6 pb-8">
+    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-4 md:p-5">
       <div className="flex items-center justify-between gap-2 mb-4">
         <p className="text-[#4b5563] text-xs uppercase tracking-widest font-medium">Sentiment</p>
         <div className="flex items-center gap-1 bg-[#111111] border border-[#2a2a2a] rounded-lg p-1">

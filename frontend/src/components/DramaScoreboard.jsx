@@ -229,7 +229,7 @@ export default function DramaScoreboard({
       aria-label="confidence-profile-dashboard"
       className="rounded-2xl border border-zinc-800 bg-zinc-900/30 overflow-hidden"
     >
-      <div className="p-4 md:p-2">
+      <div className="p-4 md:p-5">
         <div className="flex items-center justify-between gap-2 mb-5">
           <div>
             <p className="text-zinc-500 text-xs uppercase tracking-[0.16em] mb-1 font-medium">Confidence Profile</p>

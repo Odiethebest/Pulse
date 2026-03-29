@@ -243,7 +243,7 @@ export default function App() {
           className="pulse-content flex flex-col gap-5 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8"
         >
 
-          <div className="drama-module animate-fade-up bg-indigo-900/10 md:bg-indigo-500/5 border border-indigo-500/20 rounded-lg md:rounded-xl p-3 md:p-6 overflow-hidden" style={{ animationDelay: '20ms' }}>
+          <div className="drama-module animate-fade-up bg-indigo-900/10 md:bg-indigo-500/5 border border-indigo-500/20 rounded-lg md:rounded-xl p-4 md:p-5 overflow-hidden" style={{ animationDelay: '20ms' }}>
             <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">
               Frontline Verdict
             </p>
@@ -267,9 +267,9 @@ export default function App() {
           </motion.div>
 
           {recapLines.length > 0 && (
-            <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden px-5 md:px-6 pt-4 md:pt-5 pb-5 md:pb-6" style={{ animationDelay: '160ms' }}>
+            <div className="drama-module animate-fade-up bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl overflow-hidden p-4 md:p-5" style={{ animationDelay: '160ms' }}>
               <p className="stage-title text-[#4b5563] text-xs uppercase tracking-widest mb-2 font-medium">Three-Line Recap</p>
-              <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-4 md:p-6">
+              <div className="bg-zinc-900/40 rounded-xl overflow-hidden border-l-4 border-indigo-500/70 p-4 md:p-5">
                 <div className="space-y-3">
                   {recapLines.map((line, i) => (
                     <div key={i} className="stagger-1 flex items-start gap-3">

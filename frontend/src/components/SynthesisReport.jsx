@@ -177,7 +177,7 @@ export default function SynthesisReport({
           })}
         </div>
 
-        <div className="rounded-lg border border-zinc-800 bg-[#0f0f0f] px-3 py-3 overflow-hidden">
+        <div className="rounded-lg border border-zinc-800 bg-[#0f0f0f] p-4 overflow-hidden">
           <div className="flex items-center justify-between gap-2 mb-2">
             <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-zinc-500">Action Items</p>
             <p className="text-[11px] text-zinc-600">{actionItems.length} open</p>

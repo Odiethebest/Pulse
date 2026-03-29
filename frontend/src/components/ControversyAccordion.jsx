@@ -149,7 +149,7 @@ function QuoteCard({ quote, topicNameMap }) {
       transition={{ type: 'spring', stiffness: 260, damping: 20 }}
       className="inline-block w-full break-inside-avoid mb-6"
     >
-      <article className={`rounded-xl p-6 transition-colors ${shellClass}`}>
+      <article className={`rounded-xl p-4 md:p-5 transition-colors ${shellClass}`}>
         {isHighlight && (
           <div className="mb-3 h-px rounded-full bg-gradient-to-r from-transparent via-zinc-300/40 to-transparent" />
         )}
@@ -246,8 +246,8 @@ export default function ControversyAccordion({ data }) {
   if (!topics.length || !quotes.length) return null
 
   return (
-    <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-visible md:overflow-hidden p-0 md:p-5">
-      <div className="sticky top-0 z-30 md:z-20 pt-4 pb-3 md:pb-4 bg-zinc-950/70 md:bg-zinc-950/80 backdrop-blur-xl md:backdrop-blur-md border-b border-zinc-800/50 md:border-white/5 px-4 md:px-0 md:mt-16 md:mb-6">
+    <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="sticky top-0 z-30 md:z-20 pt-4 pb-3 md:pb-4 bg-zinc-950/70 md:bg-zinc-950/80 backdrop-blur-xl md:backdrop-blur-md border-b border-zinc-800/50 md:border-white/5 px-4 md:px-5">
         <div className="flex items-center gap-2 mb-2 md:mb-1.5">
           <Orbit size={14} className="text-zinc-500" />
           <p className="text-[11px] font-bold tracking-widest text-zinc-500 uppercase">Controversy Lenses</p>
@@ -301,7 +301,7 @@ export default function ControversyAccordion({ data }) {
         </div>
       </div>
 
-      <div id="signal-feed" className="px-4 md:px-0 pt-4 md:pt-0 pb-5 md:pb-0">
+      <div id="signal-feed" className="px-4 md:px-5 pt-4 md:pt-4 pb-5 md:pb-5">
         {filteredQuotes.length > 0 ? (
           <motion.div className="columns-1 sm:columns-2 lg:columns-3 gap-4 md:gap-6 mt-1 md:mt-2">
             <AnimatePresence mode="popLayout">
@@ -321,7 +321,7 @@ export default function ControversyAccordion({ data }) {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-            className="border border-zinc-800 rounded-xl p-8 text-center"
+            className="border border-zinc-800 rounded-xl p-4 md:p-5 text-center"
           >
             <p className="text-sm text-zinc-500">No signals under the current topic and platform filters.</p>
           </motion.div>
