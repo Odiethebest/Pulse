@@ -15,7 +15,9 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -328,7 +330,7 @@ public class SynthesisAgent {
         sb.append("\n");
 
         sb.append("=== EVIDENCE SOURCES (cite with [n] exactly) ===\n");
-        appendEvidenceBank(sb, redditSentiment, twitterSentiment);
+        appendEvidenceBank(sb, reddit, twitter, redditSentiment, twitterSentiment, coreEntity);
         sb.append("\n");
 
         if (critique != null) {
@@ -411,27 +413,31 @@ public class SynthesisAgent {
                 """.formatted(originalUserPrompt, violationSummary, previousOutput);
     }
 
-    private void appendEvidenceBank(StringBuilder sb, SentimentResult redditSentiment, SentimentResult twitterSentiment) {
-        int[] index = {1};
-        appendQuotes(sb, redditSentiment, "Reddit", index);
-        appendQuotes(sb, twitterSentiment, "Twitter/X", index);
-        if (index[0] == 1) {
+    private void appendEvidenceBank(
+            StringBuilder sb,
+            RawPosts reddit,
+            RawPosts twitter,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment,
+            String coreEntity
+    ) {
+        List<EvidenceCandidate> ranked = rankEvidenceCandidates(
+                reddit,
+                twitter,
+                redditSentiment,
+                twitterSentiment,
+                coreEntity
+        );
+        if (ranked.isEmpty()) {
             sb.append("No quote evidence available.\n");
             return;
         }
-        sb.append("Total Sources: ").append(index[0] - 1).append("\n");
-    }
 
-    private void appendQuotes(StringBuilder sb, SentimentResult sentiment, String platform, int[] index) {
-        if (sentiment == null || sentiment.representativeQuotes() == null) {
-            return;
-        }
-        for (Quote quote : sentiment.representativeQuotes()) {
-            if (quote == null || quote.text() == null || quote.text().isBlank()) {
-                continue;
-            }
-            sb.append("Source [").append(index[0]++).append("]: ")
-                    .append("(").append(platform).append(") ")
+        int index = 1;
+        for (EvidenceCandidate candidate : ranked) {
+            Quote quote = candidate.quote();
+            sb.append("Source [").append(index++).append("]: ")
+                    .append("(").append(candidate.platform()).append(") ")
                     .append("camp=").append(quote.camp() == null ? "unknown" : quote.camp())
                     .append("; ")
                     .append("url=").append(quote.url() == null ? "" : quote.url())
@@ -439,6 +445,7 @@ public class SynthesisAgent {
                     .append("text=\"").append(quote.text()).append("\"")
                     .append("\n");
         }
+        sb.append("Total Sources: ").append(ranked.size()).append("\n");
     }
 
     private int countAvailableSources(SentimentResult redditSentiment, SentimentResult twitterSentiment) {
@@ -696,4 +703,215 @@ public class SynthesisAgent {
     private String nullSafe(String value) {
         return value == null ? "" : value;
     }
+
+    private List<EvidenceCandidate> rankEvidenceCandidates(
+            RawPosts reddit,
+            RawPosts twitter,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment,
+            String coreEntity
+    ) {
+        Map<String, Integer> postOrderScoreByUrl = buildPostOrderScoreMap(reddit, twitter);
+        List<String> anchors = buildEvidenceAnchors(coreEntity, redditSentiment, twitterSentiment);
+        String normalizedCoreEntity = normalizeForMatch(coreEntity);
+
+        List<EvidenceCandidate> candidates = new ArrayList<>();
+        collectEvidenceCandidates(candidates, redditSentiment, "Reddit", postOrderScoreByUrl, anchors, normalizedCoreEntity);
+        collectEvidenceCandidates(candidates, twitterSentiment, "Twitter/X", postOrderScoreByUrl, anchors, normalizedCoreEntity);
+
+        candidates.sort((left, right) -> {
+            int byPriority = Double.compare(right.priorityScore(), left.priorityScore());
+            if (byPriority != 0) {
+                return byPriority;
+            }
+            int byRelevance = Integer.compare(right.relevanceScore(), left.relevanceScore());
+            if (byRelevance != 0) {
+                return byRelevance;
+            }
+            int byPostScore = Integer.compare(right.postOrderScore(), left.postOrderScore());
+            if (byPostScore != 0) {
+                return byPostScore;
+            }
+            return Integer.compare(right.evidenceScore(), left.evidenceScore());
+        });
+        return candidates;
+    }
+
+    private void collectEvidenceCandidates(
+            List<EvidenceCandidate> output,
+            SentimentResult sentiment,
+            String platform,
+            Map<String, Integer> postOrderScoreByUrl,
+            List<String> anchors,
+            String normalizedCoreEntity
+    ) {
+        if (sentiment == null || sentiment.representativeQuotes() == null) {
+            return;
+        }
+
+        for (Quote quote : sentiment.representativeQuotes()) {
+            if (quote == null || quote.text() == null || quote.text().isBlank()) {
+                continue;
+            }
+
+            int evidenceScore = clampScore((int) Math.round(sanitizeWeight(quote.evidenceWeight()) * 100.0));
+            int postOrderScore = postScoreForQuote(quote, postOrderScoreByUrl);
+            int relevanceScore = quoteRelevanceScore(quote, anchors, normalizedCoreEntity);
+            double priorityScore = relevanceScore * 0.45 + postOrderScore * 0.35 + evidenceScore * 0.20;
+            output.add(new EvidenceCandidate(
+                    quote,
+                    platform,
+                    evidenceScore,
+                    postOrderScore,
+                    relevanceScore,
+                    priorityScore
+            ));
+        }
+    }
+
+    private Map<String, Integer> buildPostOrderScoreMap(RawPosts reddit, RawPosts twitter) {
+        Map<String, Integer> scoreByUrl = new LinkedHashMap<>();
+        appendPostOrderScores(scoreByUrl, reddit);
+        appendPostOrderScores(scoreByUrl, twitter);
+        return scoreByUrl;
+    }
+
+    private void appendPostOrderScores(Map<String, Integer> scoreByUrl, RawPosts rawPosts) {
+        if (rawPosts == null || rawPosts.posts() == null || rawPosts.posts().isEmpty()) {
+            return;
+        }
+
+        int total = rawPosts.posts().size();
+        for (int i = 0; i < total; i++) {
+            var post = rawPosts.posts().get(i);
+            if (post == null) {
+                continue;
+            }
+            String normalizedUrl = normalizeUrl(post.url());
+            if (normalizedUrl.isBlank()) {
+                continue;
+            }
+            int score = total <= 1
+                    ? 85
+                    : clampScore(100 - (int) Math.round((i * 70.0) / (double) (total - 1)));
+            scoreByUrl.merge(normalizedUrl, score, Math::max);
+        }
+    }
+
+    private List<String> buildEvidenceAnchors(
+            String coreEntity,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment
+    ) {
+        LinkedHashSet<String> anchors = new LinkedHashSet<>();
+        addAnchorText(anchors, coreEntity);
+        addControversyAnchors(anchors, redditSentiment);
+        addControversyAnchors(anchors, twitterSentiment);
+        return new ArrayList<>(anchors);
+    }
+
+    private void addControversyAnchors(LinkedHashSet<String> anchors, SentimentResult sentiment) {
+        if (sentiment == null) {
+            return;
+        }
+
+        if (sentiment.mainControversies() != null) {
+            for (String item : sentiment.mainControversies()) {
+                addAnchorText(anchors, item);
+            }
+        }
+
+        if (sentiment.aspectSentiments() != null) {
+            sentiment.aspectSentiments().forEach(aspect -> {
+                if (aspect == null) {
+                    return;
+                }
+                addAnchorText(anchors, aspect.aspect());
+                addAnchorText(anchors, aspect.summary());
+            });
+        }
+    }
+
+    private void addAnchorText(LinkedHashSet<String> anchors, String text) {
+        String normalized = normalizeForMatch(text);
+        if (normalized.isBlank()) {
+            return;
+        }
+        if (normalized.length() >= 4) {
+            anchors.add(normalized);
+        }
+        splitKeywords(normalized).forEach(anchors::add);
+    }
+
+    private int postScoreForQuote(Quote quote, Map<String, Integer> postOrderScoreByUrl) {
+        if (postOrderScoreByUrl.isEmpty()) {
+            return 50;
+        }
+        String normalizedUrl = normalizeUrl(quote.url());
+        if (!normalizedUrl.isBlank()) {
+            Integer score = postOrderScoreByUrl.get(normalizedUrl);
+            if (score != null) {
+                return score;
+            }
+        }
+        return 50;
+    }
+
+    private int quoteRelevanceScore(Quote quote, List<String> anchors, String normalizedCoreEntity) {
+        String text = normalizeForMatch(nullSafe(quote.text()) + " " + nullSafe(quote.url()));
+        if (text.isBlank()) {
+            return 0;
+        }
+
+        int score = 0;
+        if (normalizedCoreEntity != null
+                && !normalizedCoreEntity.isBlank()
+                && normalizedCoreEntity.length() >= 4
+                && text.contains(normalizedCoreEntity)) {
+            score += 40;
+        }
+
+        int hitCount = 0;
+        for (String anchor : anchors) {
+            if (anchor == null || anchor.isBlank()) {
+                continue;
+            }
+            if (!text.contains(anchor)) {
+                continue;
+            }
+            hitCount += 1;
+            score += anchor.length() >= 8 ? 14 : 9;
+        }
+        if (hitCount >= 2) {
+            score += 8;
+        }
+        return clampScore(score);
+    }
+
+    private double sanitizeWeight(Double value) {
+        if (value == null || Double.isNaN(value) || Double.isInfinite(value)) {
+            return 0.5;
+        }
+        return Math.max(0.0, Math.min(1.0, value));
+    }
+
+    private int clampScore(int value) {
+        return Math.max(0, Math.min(100, value));
+    }
+
+    private String normalizeUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return "";
+        }
+        return url.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private record EvidenceCandidate(
+            Quote quote,
+            String platform,
+            int evidenceScore,
+            int postOrderScore,
+            int relevanceScore,
+            double priorityScore
+    ) {}
 }

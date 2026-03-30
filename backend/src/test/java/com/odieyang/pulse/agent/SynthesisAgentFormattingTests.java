@@ -1,5 +1,11 @@
 package com.odieyang.pulse.agent;
 
+import com.odieyang.pulse.model.CampDistribution;
+import com.odieyang.pulse.model.ControversyTopic;
+import com.odieyang.pulse.model.Quote;
+import com.odieyang.pulse.model.RawPost;
+import com.odieyang.pulse.model.RawPosts;
+import com.odieyang.pulse.model.SentimentResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -77,5 +83,63 @@ class SynthesisAgentFormattingTests {
         );
 
         assertTrue(violations.isEmpty());
+    }
+
+    @Test
+    void buildUserPromptShouldRankEvidenceSourcesByValueAcrossPlatforms() {
+        SynthesisAgent agent = new SynthesisAgent(null, null);
+        RawPosts reddit = new RawPosts("reddit", List.of(
+                new RawPost("Reddit title", "General comments about awards.", "https://reddit.com/r/1")
+        ));
+        RawPosts twitter = new RawPosts("twitter", List.of(
+                new RawPost("Twitter title", "Fans debate Taylor Swift and Ed Sheeran friendship.", "https://x.com/1")
+        ));
+
+        SentimentResult redditSentiment = new SentimentResult(
+                "reddit",
+                0.4,
+                0.4,
+                0.2,
+                List.of("awards"),
+                List.of(new Quote(
+                        "People discuss music awards in broad terms.",
+                        "https://reddit.com/r/1",
+                        "neutral",
+                        "neutral",
+                        0.95
+                )),
+                new CampDistribution(0.4, 0.4, 0.2),
+                List.of(new ControversyTopic("awards", 55, "award-related opinions"))
+        );
+        SentimentResult twitterSentiment = new SentimentResult(
+                "twitter",
+                0.5,
+                0.3,
+                0.2,
+                List.of("friendship dynamics"),
+                List.of(new Quote(
+                        "Taylor Swift and Ed Sheeran friendship still sparks debate.",
+                        "https://x.com/1",
+                        "neutral",
+                        "neutral",
+                        0.70
+                )),
+                new CampDistribution(0.5, 0.3, 0.2),
+                List.of(new ControversyTopic("friendship dynamics", 70, "friendship discourse"))
+        );
+
+        String prompt = (String) ReflectionTestUtils.invokeMethod(
+                agent,
+                "buildUserPrompt",
+                reddit,
+                twitter,
+                redditSentiment,
+                twitterSentiment,
+                null,
+                "Taylor Swift and Ed Sheeran friendship"
+        );
+
+        assertTrue(prompt.contains("Source [1]: (Twitter/X)"),
+                "Expected top-ranked source to be selected by value, not platform block order");
     }
 }
