@@ -8,45 +8,6 @@ function clampScore(value) {
   return Math.max(0, Math.min(100, Math.round(n)))
 }
 
-const QUOTE_TARGET_PER_TOPIC = 6
-
-const TEMPLATE_BANK = {
-  Reddit: {
-    positive: [
-      'I do not agree with everything, but on {topic} the receipts are stronger than the outrage cycle.',
-      'Long threads on {topic} are surprisingly evidence-heavy once you ignore the loudest comments.',
-      'People call this spin, but the timeline around {topic} is more coherent than critics admit.',
-    ],
-    negative: [
-      'The {topic} framing feels manufactured. It sounds polished but dodges the core criticism.',
-      'Every week we get a new {topic} narrative and the same unresolved contradictions.',
-      'Calling this strategy does not fix the underlying issues around {topic}.',
-    ],
-    neutral: [
-      'Can we separate vibes from facts on {topic}? I am still waiting for primary sources.',
-      'The thread is split on {topic}, and the strongest comments are the ones with citations.',
-      'I see valid arguments on both sides of {topic}, but the evidence quality is inconsistent.',
-    ],
-  },
-  Twitter: {
-    positive: [
-      'Hot take: {topic} discourse is loud, but the data still supports this move.',
-      'On {topic}, people are amplifying clips while ignoring full context.',
-      '{topic} keeps trending, yet the strongest pushback still lacks hard evidence.',
-    ],
-    negative: [
-      '{topic} is where the narrative starts to crack. Spin cannot mask this forever.',
-      'Every cycle repeats: promise, headline, no real delivery on {topic}.',
-      '{topic} is being sold as momentum, but the substance is thin.',
-    ],
-    neutral: [
-      'Timeline is split on {topic}. Waiting for sourced reporting before picking a side.',
-      '{topic} debate is moving too fast for clean conclusions right now.',
-      'I can see both narratives on {topic}; still need stronger verification.',
-    ],
-  },
-}
-
 function splitKeywords(value) {
   return normalize(value)
     .split(/[^a-z0-9]+/i)
@@ -122,23 +83,6 @@ function normalizeSentimentValue(value) {
   return 'neutral'
 }
 
-function pickTemplate(platform, sentiment, index) {
-  const bucket = TEMPLATE_BANK[platform]?.[sentiment] || TEMPLATE_BANK[platform]?.neutral || []
-  if (!bucket.length) return '{topic}'
-  return bucket[index % bucket.length]
-}
-
-function excerpt(text, limit = 8) {
-  const words = String(text ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean)
-  if (!words.length) return ''
-  const sliced = words.slice(0, limit).join(' ')
-  return words.length > limit ? `${sliced}...` : sliced
-}
-
 function buildTopicIdsForQuote(quote, topics, index) {
   const matchedTopicIds = topics
     .filter((topic) => matchScore(`${quote?.text} ${quote?.url}`, splitKeywords(topic.name)) > 0)
@@ -156,95 +100,6 @@ function buildTopicIdsForQuote(quote, topics, index) {
   }
 
   return topicIds
-}
-
-function createSyntheticQuote({ topic, topics, topicIndex, quoteIndex, sourceQuotes, id }) {
-  const platform = quoteIndex % 2 === 0 ? 'Reddit' : 'Twitter'
-  const sentimentCycle = ['positive', 'negative', 'neutral']
-  const sentiment = sentimentCycle[(topicIndex + quoteIndex) % sentimentCycle.length]
-  const template = pickTemplate(platform, sentiment, quoteIndex + topicIndex)
-  const seed = sourceQuotes.length > 0
-    ? sourceQuotes[(topicIndex * 3 + quoteIndex) % sourceQuotes.length]
-    : null
-  const seedLine = seed?.text ? ` Seen a similar point: "${excerpt(seed.text)}".` : ''
-  const text = template.replace('{topic}', topic.name) + seedLine
-  const evidenceBase = 62 + ((topicIndex * 11 + quoteIndex * 7) % 33)
-  const topicIds = [topic.id]
-
-  if (topics.length > 1 && quoteIndex === QUOTE_TARGET_PER_TOPIC - 1) {
-    const neighbor = topics[(topicIndex + 1) % topics.length]?.id
-    if (neighbor && !topicIds.includes(neighbor)) topicIds.push(neighbor)
-  }
-
-  return {
-    id,
-    platform,
-    sentiment,
-    evidenceScore: clampScore(evidenceBase),
-    text,
-    topicIds,
-    link: null,
-  }
-}
-
-function ensureTopicCoverage(quotes, topics, sourceQuotes) {
-  const output = [...quotes]
-  let syntheticCounter = 1
-
-  topics.forEach((topic, topicIndex) => {
-    let topicQuotes = output.filter((quote) => quote.topicIds.includes(topic.id))
-    let hasReddit = topicQuotes.some((quote) => quote.platform === 'Reddit')
-    let hasTwitter = topicQuotes.some((quote) => quote.platform === 'Twitter')
-    let quoteIndex = 0
-
-    while (topicQuotes.length < QUOTE_TARGET_PER_TOPIC || !hasReddit || !hasTwitter) {
-      const forcedIndex = !hasReddit ? quoteIndex * 2 : (!hasTwitter ? quoteIndex * 2 + 1 : quoteIndex)
-      const synthetic = createSyntheticQuote({
-        topic,
-        topics,
-        topicIndex,
-        quoteIndex: forcedIndex,
-        sourceQuotes,
-        id: `q-synth-${syntheticCounter}`,
-      })
-      syntheticCounter += 1
-      output.push(synthetic)
-
-      topicQuotes = output.filter((quote) => quote.topicIds.includes(topic.id))
-      hasReddit = topicQuotes.some((quote) => quote.platform === 'Reddit')
-      hasTwitter = topicQuotes.some((quote) => quote.platform === 'Twitter')
-      quoteIndex += 1
-
-      if (quoteIndex > 20) break
-    }
-  })
-
-  return output
-}
-
-function padQuoteVolume(quotes, topics, sourceQuotes) {
-  const output = [...quotes]
-  const target = topics.length * QUOTE_TARGET_PER_TOPIC
-  let cursor = 0
-
-  while (output.length < target) {
-    const topic = topics[cursor % topics.length]
-    const synthetic = createSyntheticQuote({
-      topic,
-      topics,
-      topicIndex: cursor % topics.length,
-      quoteIndex: QUOTE_TARGET_PER_TOPIC + Math.floor(cursor / topics.length),
-      sourceQuotes,
-      id: `q-pad-${cursor + 1}`,
-    })
-    synthetic.topicIds = [topic.id]
-    output.push(synthetic)
-    cursor += 1
-
-    if (cursor > target * 2) break
-  }
-
-  return output
 }
 
 function dedupeQuotes(quotes) {
@@ -332,23 +187,22 @@ export function buildControversyBoardData(report) {
     return { topics: [], quotes: [] }
   }
 
-  const normalizedSourceQuotes = sourceQuotes.map((quote, index) => {
-    const topicIds = buildTopicIdsForQuote(quote, topics, index)
+  const quotes = sourceQuotes
+    .map((quote, index) => {
+      const text = String(quote?.text ?? '').trim()
+      if (!text) return null
 
-    return {
-      id: `q-real-${index + 1}`,
-      platform: platformKey(quote?.platform),
-      sentiment: normalizeSentimentValue(normalizeSentiment(quote)),
-      evidenceScore: extractEvidenceScore(quote),
-      text: quote?.text || 'No quote text available.',
-      topicIds,
-      link: quote?.url || null,
-    }
-  })
-
-  const expandedQuotes = ensureTopicCoverage(normalizedSourceQuotes, topics, sourceQuotes)
-  const paddedQuotes = padQuoteVolume(expandedQuotes, topics, sourceQuotes)
-  const quotes = paddedQuotes.map((quote, index) => ({
+      return {
+        platform: platformKey(quote?.platform),
+        sentiment: normalizeSentimentValue(normalizeSentiment(quote)),
+        evidenceScore: extractEvidenceScore(quote),
+        text,
+        topicIds: buildTopicIdsForQuote(quote, topics, index),
+        link: quote?.url || null,
+      }
+    })
+    .filter(Boolean)
+    .map((quote, index) => ({
     ...quote,
     id: `q-${index + 1}`,
   }))

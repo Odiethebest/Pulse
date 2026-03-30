@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildControversyBoardData } from '../controversyMapper'
 
 describe('buildControversyBoardData', () => {
-  it('ensures every topic has dense mixed-platform coverage', () => {
+  it('keeps only real source quotes without synthetic padding', () => {
     const report = {
       controversyTopics: [
         { aspect: 'album quality', heat: 74 },
@@ -35,13 +35,15 @@ describe('buildControversyBoardData', () => {
 
     const data = buildControversyBoardData(report)
     expect(data.topics).toHaveLength(3)
-    expect(data.quotes.length).toBeGreaterThanOrEqual(18)
-
-    data.topics.forEach((topic) => {
-      const topicQuotes = data.quotes.filter((quote) => quote.topicIds.includes(topic.id))
-      expect(topicQuotes.length).toBeGreaterThanOrEqual(6)
-      expect(topicQuotes.some((quote) => quote.platform === 'Reddit')).toBe(true)
-      expect(topicQuotes.some((quote) => quote.platform === 'Twitter')).toBe(true)
-    })
+    expect(data.quotes).toHaveLength(2)
+    expect(data.quotes.map((quote) => quote.text)).toEqual([
+      'The album has sharper songwriting than people admit.',
+      'Cultural impact is overstated and driven by fandom volume.',
+    ])
+    expect(data.quotes.every((quote) => quote.id.startsWith('q-'))).toBe(true)
+    expect(data.quotes.every((quote) => Array.isArray(quote.topicIds) && quote.topicIds.length > 0)).toBe(true)
+    expect(
+      data.quotes.some((quote) => /every week we get a new|timeline is split|hot take/i.test(quote.text))
+    ).toBe(false)
   })
 })
