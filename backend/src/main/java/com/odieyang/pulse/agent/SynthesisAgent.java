@@ -32,6 +32,11 @@ import java.util.regex.Pattern;
 public class SynthesisAgent {
 
     private static final Logger log = LoggerFactory.getLogger(SynthesisAgent.class);
+    private static final String REDDIT_PLATFORM = "Reddit";
+    private static final String TWITTER_PLATFORM = "Twitter/X";
+    private static final int LEAD_POOL_MAX_SIZE = 6;
+    private static final int FRONTLINE_POOL_MAX_SIZE = 8;
+    private static final int FRONTLINE_PER_PLATFORM_TARGET = 4;
     private static final Pattern RAW_SCORE_PATTERN = Pattern.compile("(?is).*\\b\\d{1,3}\\s*/\\s*100\\b.*");
     private static final Pattern TRAILING_TAG_PATTERN = Pattern.compile(
             "(?is).*\\(\\s*(?:fierce|explosive|simmering|volatile|fragile|stable|quiet|niche|intense|heated)(?:\\s+and\\s+[a-z]+)*\\s*\\).*");
@@ -102,6 +107,10 @@ public class SynthesisAgent {
             7. DIVERSIFY EVIDENCE:
                - CITATION QUOTA: use a minimum of 5 distinct source ids across the final response when at least 5 sources are provided.
                - Do not repeat the same two ids in every section.
+            8. FOLLOW SECTION CANDIDATE POOLS:
+               - User input includes "Lead preferred source ids" and "Frontline preferred source ids".
+               - In ## Lead, prioritize ids from the Lead preferred pool.
+               - In ## Frontline Clash, prioritize ids from the Frontline preferred pool and use both platforms when available.
 
             Translation rules:
             - No raw query strings in final text. Convert query-like topic text into natural entity phrasing such as "public perception of [entity]" or "discourse around [entity]".
@@ -160,6 +169,7 @@ public class SynthesisAgent {
             - citation mandate: every factual claim must cite Source [n] ids
             - citation quota: use at least 5 distinct source ids when 5 or more are provided
             - prohibit laziness: do not repeatedly cite only [1] and [2]
+            - follow section candidate pools: prioritize Lead ids in Lead and Frontline ids in Frontline Clash
             """;
 
     private final ChatClient chatClient;
@@ -329,8 +339,25 @@ public class SynthesisAgent {
         sb.append("Twitter/X main focus: %s\n".formatted(topControversy(twitterSentiment)));
         sb.append("\n");
 
+        List<EvidenceCandidate> rankedEvidence = rankEvidenceCandidates(
+                reddit,
+                twitter,
+                redditSentiment,
+                twitterSentiment,
+                coreEntity
+        );
+
         sb.append("=== EVIDENCE SOURCES (cite with [n] exactly) ===\n");
-        appendEvidenceBank(sb, reddit, twitter, redditSentiment, twitterSentiment, coreEntity);
+        appendEvidenceBank(sb, rankedEvidence);
+        sb.append("\n");
+
+        SectionCitationPools sectionPools = buildSectionCitationPools(
+                rankedEvidence,
+                redditSentiment,
+                twitterSentiment,
+                coreEntity
+        );
+        appendSectionCandidatePools(sb, sectionPools, rankedEvidence);
         sb.append("\n");
 
         if (critique != null) {
@@ -407,28 +434,15 @@ public class SynthesisAgent {
                 7. Use citations in [n] format that map to Source [n].
                 8. Use at least 5 distinct citation ids when at least 5 sources are available.
                 9. Do not repeat only [1] [2] across sections.
+                10. Follow section candidate pools: prioritize Lead preferred ids in Lead and Frontline preferred ids in Frontline Clash.
 
                 === PREVIOUS INVALID OUTPUT (DO NOT COPY) ===
                 %s
                 """.formatted(originalUserPrompt, violationSummary, previousOutput);
     }
 
-    private void appendEvidenceBank(
-            StringBuilder sb,
-            RawPosts reddit,
-            RawPosts twitter,
-            SentimentResult redditSentiment,
-            SentimentResult twitterSentiment,
-            String coreEntity
-    ) {
-        List<EvidenceCandidate> ranked = rankEvidenceCandidates(
-                reddit,
-                twitter,
-                redditSentiment,
-                twitterSentiment,
-                coreEntity
-        );
-        if (ranked.isEmpty()) {
+    private void appendEvidenceBank(StringBuilder sb, List<EvidenceCandidate> ranked) {
+        if (ranked == null || ranked.isEmpty()) {
             sb.append("No quote evidence available.\n");
             return;
         }
@@ -446,6 +460,211 @@ public class SynthesisAgent {
                     .append("\n");
         }
         sb.append("Total Sources: ").append(ranked.size()).append("\n");
+    }
+
+    private SectionCitationPools buildSectionCitationPools(
+            List<EvidenceCandidate> ranked,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment,
+            String coreEntity
+    ) {
+        if (ranked == null || ranked.isEmpty()) {
+            return new SectionCitationPools(List.of(), List.of());
+        }
+
+        List<IndexedEvidence> indexed = new ArrayList<>();
+        for (int i = 0; i < ranked.size(); i++) {
+            indexed.add(new IndexedEvidence(i + 1, ranked.get(i)));
+        }
+
+        List<Integer> leadSourceIds = buildLeadCandidatePool(indexed);
+        List<Integer> frontlineSourceIds = buildFrontlineCandidatePool(indexed, redditSentiment, twitterSentiment, coreEntity);
+        if (frontlineSourceIds.isEmpty()) {
+            frontlineSourceIds = leadSourceIds;
+        }
+        return new SectionCitationPools(leadSourceIds, frontlineSourceIds);
+    }
+
+    private List<Integer> buildLeadCandidatePool(List<IndexedEvidence> indexed) {
+        LinkedHashSet<Integer> selected = new LinkedHashSet<>();
+        if (hasPlatform(indexed, REDDIT_PLATFORM)) {
+            addTopByPlatform(selected, indexed, REDDIT_PLATFORM);
+        }
+        if (hasPlatform(indexed, TWITTER_PLATFORM)) {
+            addTopByPlatform(selected, indexed, TWITTER_PLATFORM);
+        }
+        for (IndexedEvidence evidence : indexed) {
+            if (selected.size() >= LEAD_POOL_MAX_SIZE) {
+                break;
+            }
+            selected.add(evidence.sourceId());
+        }
+        return new ArrayList<>(selected);
+    }
+
+    private List<Integer> buildFrontlineCandidatePool(
+            List<IndexedEvidence> indexed,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment,
+            String coreEntity
+    ) {
+        List<String> redditAnchors = buildFrontlineAnchors(coreEntity, redditSentiment);
+        List<String> twitterAnchors = buildFrontlineAnchors(coreEntity, twitterSentiment);
+
+        List<IndexedEvidence> redditRanked = sortByFrontlineValue(
+                filterByPlatform(indexed, REDDIT_PLATFORM),
+                redditAnchors
+        );
+        List<IndexedEvidence> twitterRanked = sortByFrontlineValue(
+                filterByPlatform(indexed, TWITTER_PLATFORM),
+                twitterAnchors
+        );
+
+        LinkedHashSet<Integer> selected = new LinkedHashSet<>();
+        for (int i = 0; i < FRONTLINE_PER_PLATFORM_TARGET && selected.size() < FRONTLINE_POOL_MAX_SIZE; i++) {
+            addByRank(selected, redditRanked, i);
+            addByRank(selected, twitterRanked, i);
+        }
+
+        for (IndexedEvidence evidence : indexed) {
+            if (selected.size() >= FRONTLINE_POOL_MAX_SIZE) {
+                break;
+            }
+            selected.add(evidence.sourceId());
+        }
+        return new ArrayList<>(selected);
+    }
+
+    private List<IndexedEvidence> filterByPlatform(List<IndexedEvidence> indexed, String platform) {
+        List<IndexedEvidence> filtered = new ArrayList<>();
+        for (IndexedEvidence evidence : indexed) {
+            if (platform.equals(evidence.candidate().platform())) {
+                filtered.add(evidence);
+            }
+        }
+        return filtered;
+    }
+
+    private List<String> buildFrontlineAnchors(String coreEntity, SentimentResult sentiment) {
+        LinkedHashSet<String> anchors = new LinkedHashSet<>();
+        addAnchorText(anchors, coreEntity);
+        addControversyAnchors(anchors, sentiment);
+        return new ArrayList<>(anchors);
+    }
+
+    private List<IndexedEvidence> sortByFrontlineValue(List<IndexedEvidence> candidates, List<String> anchors) {
+        List<IndexedEvidence> sorted = new ArrayList<>(candidates);
+        sorted.sort(
+                Comparator.comparingDouble((IndexedEvidence item) ->
+                                frontlinePriorityScore(item.candidate(), anchors))
+                        .reversed()
+                        .thenComparingInt(IndexedEvidence::sourceId)
+        );
+        return sorted;
+    }
+
+    private double frontlinePriorityScore(EvidenceCandidate candidate, List<String> anchors) {
+        String normalizedText = normalizeForMatch(nullSafe(candidate.quote().text()) + " " + nullSafe(candidate.quote().url()));
+        int controversyScore = anchorMatchScore(normalizedText, anchors);
+        return candidate.priorityScore() * 0.65
+                + candidate.relevanceScore() * 0.20
+                + controversyScore * 0.15;
+    }
+
+    private int anchorMatchScore(String normalizedText, List<String> anchors) {
+        if (normalizedText == null || normalizedText.isBlank() || anchors == null || anchors.isEmpty()) {
+            return 0;
+        }
+        int score = 0;
+        int hitCount = 0;
+        for (String anchor : anchors) {
+            if (anchor == null || anchor.isBlank()) {
+                continue;
+            }
+            if (!normalizedText.contains(anchor)) {
+                continue;
+            }
+            hitCount += 1;
+            score += anchor.length() >= 8 ? 16 : 10;
+        }
+        if (hitCount >= 2) {
+            score += 8;
+        }
+        return clampScore(score);
+    }
+
+    private boolean hasPlatform(List<IndexedEvidence> indexed, String platform) {
+        for (IndexedEvidence evidence : indexed) {
+            if (platform.equals(evidence.candidate().platform())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void addTopByPlatform(LinkedHashSet<Integer> selected, List<IndexedEvidence> indexed, String platform) {
+        for (IndexedEvidence evidence : indexed) {
+            if (platform.equals(evidence.candidate().platform())) {
+                selected.add(evidence.sourceId());
+                return;
+            }
+        }
+    }
+
+    private void addByRank(LinkedHashSet<Integer> selected, List<IndexedEvidence> rankedByPlatform, int rank) {
+        if (rank < 0 || rank >= rankedByPlatform.size()) {
+            return;
+        }
+        selected.add(rankedByPlatform.get(rank).sourceId());
+    }
+
+    private void appendSectionCandidatePools(
+            StringBuilder sb,
+            SectionCitationPools sectionPools,
+            List<EvidenceCandidate> rankedEvidence
+    ) {
+        sb.append("=== SECTION CANDIDATE POOLS ===\n");
+        sb.append("Lead preferred source ids: ").append(formatIds(sectionPools.leadSourceIds())).append("\n");
+        sb.append("Frontline preferred source ids: ").append(formatIds(sectionPools.frontlineSourceIds())).append("\n");
+        sb.append("Frontline Reddit ids: ")
+                .append(formatIds(idsForPlatform(sectionPools.frontlineSourceIds(), rankedEvidence, REDDIT_PLATFORM)))
+                .append("\n");
+        sb.append("Frontline Twitter/X ids: ")
+                .append(formatIds(idsForPlatform(sectionPools.frontlineSourceIds(), rankedEvidence, TWITTER_PLATFORM)))
+                .append("\n");
+        sb.append("Pool usage rules:\n");
+        sb.append("- In ## Lead, prioritize Lead preferred source ids before using any other ids.\n");
+        sb.append("- In ## Frontline Clash, prioritize Frontline preferred source ids.\n");
+        sb.append("- In ## Frontline Clash, cite both Reddit and Twitter/X ids when both pools are available.\n");
+        sb.append("- If a preferred id does not support the claim, backfill with other Source [n] ids.\n");
+    }
+
+    private List<Integer> idsForPlatform(
+            List<Integer> ids,
+            List<EvidenceCandidate> rankedEvidence,
+            String platform
+    ) {
+        if (ids == null || ids.isEmpty() || rankedEvidence == null || rankedEvidence.isEmpty()) {
+            return List.of();
+        }
+        List<Integer> result = new ArrayList<>();
+        for (Integer sourceId : ids) {
+            if (sourceId == null || sourceId <= 0 || sourceId > rankedEvidence.size()) {
+                continue;
+            }
+            EvidenceCandidate candidate = rankedEvidence.get(sourceId - 1);
+            if (platform.equals(candidate.platform())) {
+                result.add(sourceId);
+            }
+        }
+        return result;
+    }
+
+    private String formatIds(List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return "[]";
+        }
+        return ids.toString();
     }
 
     private int countAvailableSources(SentimentResult redditSentiment, SentimentResult twitterSentiment) {
@@ -913,5 +1132,15 @@ public class SynthesisAgent {
             int postOrderScore,
             int relevanceScore,
             double priorityScore
+    ) {}
+
+    private record IndexedEvidence(
+            int sourceId,
+            EvidenceCandidate candidate
+    ) {}
+
+    private record SectionCitationPools(
+            List<Integer> leadSourceIds,
+            List<Integer> frontlineSourceIds
     ) {}
 }

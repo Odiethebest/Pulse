@@ -142,4 +142,85 @@ class SynthesisAgentFormattingTests {
         assertTrue(prompt.contains("Source [1]: (Twitter/X)"),
                 "Expected top-ranked source to be selected by value, not platform block order");
     }
+
+    @Test
+    void buildUserPromptShouldExposeLeadAndFrontlineCandidatePools() {
+        SynthesisAgent agent = new SynthesisAgent(null, null);
+        RawPosts reddit = new RawPosts("reddit", List.of(
+                new RawPost("Reddit thread 1", "Tour logistics and scheduling debate.", "https://reddit.com/r/10"),
+                new RawPost("Reddit thread 2", "Ticket pricing complaints.", "https://reddit.com/r/11")
+        ));
+        RawPosts twitter = new RawPosts("twitter", List.of(
+                new RawPost("Tweet 1", "Taylor and Ed reunion clips go viral.", "https://x.com/10"),
+                new RawPost("Tweet 2", "Users argue if friendship narrative is PR.", "https://x.com/11")
+        ));
+
+        SentimentResult redditSentiment = new SentimentResult(
+                "reddit",
+                0.45,
+                0.35,
+                0.20,
+                List.of("tour logistics", "ticket pricing"),
+                List.of(
+                        new Quote(
+                                "Reddit users scrutinize Taylor Swift tour logistics in detail.",
+                                "https://reddit.com/r/10",
+                                "neutral",
+                                "support",
+                                0.90
+                        ),
+                        new Quote(
+                                "Ticket pricing backlash keeps surfacing in fan forums.",
+                                "https://reddit.com/r/11",
+                                "negative",
+                                "oppose",
+                                0.86
+                        )
+                ),
+                new CampDistribution(0.45, 0.35, 0.20),
+                List.of(new ControversyTopic("tour logistics", 66, "deep dives on scheduling and costs"))
+        );
+        SentimentResult twitterSentiment = new SentimentResult(
+                "twitter",
+                0.50,
+                0.30,
+                0.20,
+                List.of("reunion rumors", "PR narrative"),
+                List.of(
+                        new Quote(
+                                "Twitter amplifies Taylor and Ed reunion rumors with short clips.",
+                                "https://x.com/10",
+                                "positive",
+                                "support",
+                                0.84
+                        ),
+                        new Quote(
+                                "X debates whether the friendship storyline is genuine or PR.",
+                                "https://x.com/11",
+                                "negative",
+                                "oppose",
+                                0.80
+                        )
+                ),
+                new CampDistribution(0.50, 0.30, 0.20),
+                List.of(new ControversyTopic("PR narrative", 71, "amplified speculation around motives"))
+        );
+
+        String prompt = (String) ReflectionTestUtils.invokeMethod(
+                agent,
+                "buildUserPrompt",
+                reddit,
+                twitter,
+                redditSentiment,
+                twitterSentiment,
+                null,
+                "Taylor Swift and Ed Sheeran friendship"
+        );
+
+        assertTrue(prompt.contains("=== SECTION CANDIDATE POOLS ==="));
+        assertFalse(prompt.contains("Lead preferred source ids: []"));
+        assertFalse(prompt.contains("Frontline preferred source ids: []"));
+        assertFalse(prompt.contains("Frontline Reddit ids: []"));
+        assertFalse(prompt.contains("Frontline Twitter/X ids: []"));
+    }
 }
