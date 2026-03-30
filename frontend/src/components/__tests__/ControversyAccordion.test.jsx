@@ -90,4 +90,40 @@ describe('ControversyAccordion', () => {
     })
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
   })
+
+  it('shows crawler coverage level and alerts when provided', () => {
+    render(
+      <ControversyAccordion
+        data={{
+          topics: [{ id: 't1', name: 'pricing', heat: 70 }],
+          quotes: [
+            {
+              id: 'q1',
+              platform: 'Reddit',
+              sentiment: 'neutral',
+              evidenceScore: 68,
+              text: 'Price changes sparked another argument.',
+              topicIds: ['t1'],
+            },
+          ],
+          crawlerStats: {
+            targetTotal: 50,
+            fetchedTotal: 24,
+            dedupedCount: 24,
+            unassignedCount: 9,
+            coveragePercent: 48,
+            coverageLevel: 'critical',
+            coverageAlerts: [
+              'Critical crawl coverage: 48% (<45% target).',
+              'High unassigned ratio: 38% posts could not be confidently mapped.',
+            ],
+          },
+        }}
+      />
+    )
+
+    expect(screen.getByText(/coverage 48%/i)).toBeInTheDocument()
+    expect(screen.getByText(/critical crawl coverage/i)).toBeInTheDocument()
+    expect(screen.getByText(/high unassigned ratio/i)).toBeInTheDocument()
+  })
 })

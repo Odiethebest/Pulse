@@ -1,6 +1,9 @@
 package com.odieyang.pulse.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.odieyang.pulse.model.AgentEvent;
+import com.odieyang.pulse.model.CrawledPost;
 import com.odieyang.pulse.model.Quote;
 import com.odieyang.pulse.model.RawPosts;
 import com.odieyang.pulse.model.SentimentResult;
@@ -13,10 +16,14 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
@@ -37,6 +44,25 @@ public class SynthesisAgent {
             "=== reddit posts",
             "=== twitter/x posts"
     );
+    private static final String BOUNDARY_CLASSIFIER_SYSTEM_PROMPT = """
+            You are a strict topic boundary classifier for social posts.
+            Assign each post to zero, one, or multiple topic indexes.
+
+            Return JSON only with this schema:
+            {
+              "assignments": [
+                {"postIndex": 0, "topicIndexes": [1, 2]}
+              ]
+            }
+
+            Rules:
+            - postIndex is 0-based and must match provided inputs.
+            - topicIndexes are 1-based indexes from the topic list.
+            - Use empty array when no topic applies.
+            - Prefer precision over recall: do not force weak matches.
+            - Never invent topic indexes that are not in range.
+            - Output JSON only, no markdown fences.
+            """;
 
     private static final String SYSTEM_PROMPT = """
             # ROLE
@@ -136,6 +162,49 @@ public class SynthesisAgent {
 
     private final ChatClient chatClient;
     private final AgentEventPublisher publisher;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public List<List<Integer>> classifyBoundaryTopicIndexes(
+            List<String> topicNames,
+            List<CrawledPost> posts
+    ) {
+        if (topicNames == null || topicNames.isEmpty() || posts == null || posts.isEmpty()) {
+            return List.of();
+        }
+
+        List<List<Integer>> fallback = fallbackBoundaryAssignments(topicNames, posts);
+        if (chatClient == null) {
+            return fallback;
+        }
+
+        String label = "SynthesisAgent (boundary classifier)";
+        long start = System.currentTimeMillis();
+        publishSafely(AgentEvent.started(label, "Running LLM boundary classification for ambiguous posts"));
+
+        try {
+            String raw = chatClient.prompt()
+                    .system(BOUNDARY_CLASSIFIER_SYSTEM_PROMPT)
+                    .user(buildBoundaryClassificationPrompt(topicNames, posts))
+                    .call()
+                    .content();
+
+            List<List<Integer>> parsed = parseBoundaryAssignments(raw, posts.size(), topicNames.size());
+            List<List<Integer>> merged = mergeAssignments(fallback, parsed);
+            long duration = System.currentTimeMillis() - start;
+            long assigned = merged.stream().filter(ids -> ids != null && !ids.isEmpty()).count();
+            publishSafely(AgentEvent.completed(
+                    label,
+                    "Boundary classified %d/%d posts".formatted(assigned, posts.size()),
+                    duration
+            ));
+            return merged;
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - start;
+            publishSafely(AgentEvent.failed(label, e.getMessage(), duration));
+            log.warn("Boundary classifier fallback triggered: {}", e.getMessage());
+            return fallback;
+        }
+    }
 
     public String synthesize(RawPosts reddit, RawPosts twitter,
                              SentimentResult redditSentiment, SentimentResult twitterSentiment) {
@@ -173,7 +242,7 @@ public class SynthesisAgent {
                                 SentimentResult redditSentiment, SentimentResult twitterSentiment,
                                 String critique, String coreEntity, boolean isRevision) {
         String label = isRevision ? "SynthesisAgent (revision)" : "SynthesisAgent";
-        publisher.publish(AgentEvent.started(label, isRevision
+        publishSafely(AgentEvent.started(label, isRevision
                 ? "Revising synthesis based on critic feedback"
                 : "Synthesizing sentiment from Reddit and Twitter/X"));
         long start = System.currentTimeMillis();
@@ -190,17 +259,24 @@ public class SynthesisAgent {
             }
 
             long duration = System.currentTimeMillis() - start;
-            publisher.publish(AgentEvent.completed(label,
+            publishSafely(AgentEvent.completed(label,
                     "Synthesis report generated (%d chars)".formatted(result.length()), duration));
             log.info("{} completed in {}ms", label, duration);
             return result;
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
-            publisher.publish(AgentEvent.failed(label, e.getMessage(), duration));
+            publishSafely(AgentEvent.failed(label, e.getMessage(), duration));
             log.error("{} failed", label, e);
             throw new RuntimeException(label + " failed", e);
         }
+    }
+
+    private void publishSafely(AgentEvent event) {
+        if (publisher == null) {
+            return;
+        }
+        publisher.publish(event);
     }
 
     private String buildUserPrompt(RawPosts reddit, RawPosts twitter,
@@ -415,5 +491,209 @@ public class SynthesisAgent {
         }
         String value = sentimentResult.mainControversies().getFirst();
         return value == null || value.isBlank() ? "general narrative" : value;
+    }
+
+    private String buildBoundaryClassificationPrompt(List<String> topicNames, List<CrawledPost> posts) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Classify these ambiguous posts against topic indexes.\n");
+        sb.append("=== TOPICS (1-based index) ===\n");
+        for (int i = 0; i < topicNames.size(); i++) {
+            sb.append(i + 1).append(". ").append(topicNames.get(i)).append('\n');
+        }
+        sb.append('\n');
+        sb.append("=== POSTS (0-based index) ===\n");
+        for (int i = 0; i < posts.size(); i++) {
+            CrawledPost post = posts.get(i);
+            sb.append("- postIndex: ").append(i).append('\n');
+            sb.append("  platform: ").append(nullSafe(post.platform())).append('\n');
+            sb.append("  title: ").append(nullSafe(post.title())).append('\n');
+            sb.append("  snippet: ").append(nullSafe(post.snippet())).append('\n');
+            sb.append("  url: ").append(nullSafe(post.url())).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private List<List<Integer>> parseBoundaryAssignments(String raw, int postCount, int topicCount) {
+        List<List<Integer>> normalized = emptyAssignments(postCount);
+        if (raw == null || raw.isBlank()) {
+            return normalized;
+        }
+
+        try {
+            String json = extractJsonPayload(raw);
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode assignmentsNode = root;
+            if (root != null && root.has("assignments")) {
+                assignmentsNode = root.get("assignments");
+            }
+            if (assignmentsNode == null || !assignmentsNode.isArray()) {
+                return normalized;
+            }
+
+            for (JsonNode node : assignmentsNode) {
+                if (node == null || !node.isObject()) {
+                    continue;
+                }
+                int postIndex = node.path("postIndex").asInt(-1);
+                if (postIndex < 0 || postIndex >= postCount) {
+                    continue;
+                }
+
+                JsonNode topics = node.path("topicIndexes");
+                if (!topics.isArray()) {
+                    continue;
+                }
+
+                LinkedHashSet<Integer> ids = new LinkedHashSet<>();
+                for (JsonNode idNode : topics) {
+                    int topicIndex = idNode.asInt(-1);
+                    if (topicIndex <= 0 || topicIndex > topicCount) {
+                        continue;
+                    }
+                    ids.add(topicIndex);
+                }
+                normalized.set(postIndex, new ArrayList<>(ids));
+            }
+            return normalized;
+        } catch (Exception e) {
+            log.debug("Failed to parse boundary classifier output: {}", e.getMessage());
+            return normalized;
+        }
+    }
+
+    private String extractJsonPayload(String raw) {
+        String cleaned = raw.trim()
+                .replaceFirst("(?is)^```(?:json)?\\s*", "")
+                .replaceFirst("(?is)\\s*```$", "");
+        int objectStart = cleaned.indexOf('{');
+        int arrayStart = cleaned.indexOf('[');
+        int start = -1;
+        char endToken = '}';
+
+        if (arrayStart >= 0 && (objectStart < 0 || arrayStart < objectStart)) {
+            start = arrayStart;
+            endToken = ']';
+        } else if (objectStart >= 0) {
+            start = objectStart;
+            endToken = '}';
+        }
+
+        if (start < 0) {
+            return cleaned;
+        }
+
+        int end = cleaned.lastIndexOf(endToken);
+        if (end < start) {
+            return cleaned.substring(start);
+        }
+        return cleaned.substring(start, end + 1);
+    }
+
+    private List<List<Integer>> mergeAssignments(List<List<Integer>> fallback, List<List<Integer>> parsed) {
+        int size = Math.max(fallback.size(), parsed.size());
+        List<List<Integer>> merged = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            List<Integer> parsedRow = i < parsed.size() ? parsed.get(i) : List.of();
+            List<Integer> fallbackRow = i < fallback.size() ? fallback.get(i) : List.of();
+            if (parsedRow != null && !parsedRow.isEmpty()) {
+                merged.add(parsedRow);
+            } else {
+                merged.add(fallbackRow == null ? List.of() : fallbackRow);
+            }
+        }
+        return merged;
+    }
+
+    private List<List<Integer>> fallbackBoundaryAssignments(List<String> topicNames, List<CrawledPost> posts) {
+        List<List<Integer>> assignments = emptyAssignments(posts.size());
+        if (topicNames.isEmpty() || posts.isEmpty()) {
+            return assignments;
+        }
+
+        List<List<String>> topicKeywords = topicNames.stream()
+                .map(this::splitKeywords)
+                .toList();
+
+        for (int i = 0; i < posts.size(); i++) {
+            CrawledPost post = posts.get(i);
+            String source = normalizeForMatch(nullSafe(post.title()) + " " + nullSafe(post.snippet()));
+            if (source.isBlank()) {
+                continue;
+            }
+
+            Map<Integer, Integer> scored = new TreeMap<>();
+            for (int j = 0; j < topicNames.size(); j++) {
+                int score = keywordMatchScore(source, topicKeywords.get(j), topicNames.get(j));
+                if (score > 0) {
+                    scored.put(j + 1, score);
+                }
+            }
+
+            if (scored.isEmpty()) {
+                continue;
+            }
+
+            int top = scored.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+            List<Integer> picked = scored.entrySet().stream()
+                    .filter(entry -> entry.getValue() == top)
+                    .map(Map.Entry::getKey)
+                    .limit(2)
+                    .toList();
+            assignments.set(i, picked);
+        }
+        return assignments;
+    }
+
+    private List<List<Integer>> emptyAssignments(int size) {
+        List<List<Integer>> empty = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            empty.add(List.of());
+        }
+        return empty;
+    }
+
+    private List<String> splitKeywords(String value) {
+        String normalized = normalizeForMatch(value);
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+        List<String> keywords = new ArrayList<>();
+        for (String part : normalized.split("[^a-z0-9]+")) {
+            if (part == null || part.isBlank()) {
+                continue;
+            }
+            if (part.length() < 3) {
+                continue;
+            }
+            keywords.add(part);
+        }
+        return keywords;
+    }
+
+    private int keywordMatchScore(String source, List<String> keywords, String topicName) {
+        String topic = normalizeForMatch(topicName);
+        if (!topic.isBlank() && source.contains(topic)) {
+            return 10;
+        }
+        int score = 0;
+        for (String keyword : keywords) {
+            if (source.contains(keyword)) {
+                score += 1;
+            }
+        }
+        return score;
+    }
+
+    private String normalizeForMatch(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String nullSafe(String value) {
+        return value == null ? "" : value;
     }
 }

@@ -230,6 +230,48 @@ class PulseOrchestratorV2Tests {
                 "Expected citations beyond [Q1] and [Q2]");
     }
 
+    @Test
+    void analyzeShouldEmitPhase3CrawlerSignalsAndRankedBucketPosts() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new BoundaryClassifyingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "crawlerTargetTotal", 10);
+        ReflectionTestUtils.setField(orchestrator, "crawlerBoundaryMaxPosts", 20);
+
+        PulseReport report = orchestrator.analyze("Phase3 coverage topic");
+
+        assertNotNull(report.crawlerStats());
+        assertEquals(40, report.crawlerStats().coveragePercent());
+        assertEquals("critical", report.crawlerStats().coverageLevel());
+        assertNotNull(report.crawlerStats().coverageAlerts());
+        assertFalse(report.crawlerStats().coverageAlerts().isEmpty());
+
+        TopicBucket pricingBucket = report.topicBuckets().stream()
+                .filter(bucket -> "t1".equals(bucket.topicId()))
+                .findFirst()
+                .orElseThrow();
+        assertNotNull(pricingBucket.posts());
+        assertFalse(pricingBucket.posts().isEmpty());
+        assertEquals(0, report.crawlerStats().unassignedCount());
+
+        CrawledPost top = pricingBucket.posts().getFirst();
+        assertNotNull(top.evidenceScore());
+        assertNotNull(top.recencyScore());
+        assertNotNull(top.sortScore());
+        assertEquals("llm", top.classificationMethod());
+        assertEquals("https://reddit.com/r/1", top.url());
+    }
+
     private PulseOrchestrator buildOrchestrator(
             QueryPlannerAgent queryPlannerAgent,
             RedditAgent redditAgent,
@@ -595,6 +637,15 @@ class PulseOrchestratorV2Tests {
                 String coreEntity
         ) {
             return synthesize(reddit, twitter, redditSentiment, twitterSentiment, critique);
+        }
+    }
+
+    private static class BoundaryClassifyingSynthesisAgent extends TrackingSynthesisAgent {
+        @Override
+        public List<List<Integer>> classifyBoundaryTopicIndexes(List<String> topicNames, List<CrawledPost> posts) {
+            return posts.stream()
+                    .map(ignored -> List.of(1))
+                    .toList();
         }
     }
 

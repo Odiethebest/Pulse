@@ -168,6 +168,21 @@ function buildDataFromTopicBuckets(report) {
         if (!existing.topicIds.includes(bucketId)) {
           existing.topicIds.push(bucketId)
         }
+        const nextEvidence = extractEvidenceScore(post)
+        const nextSort = typeof post?.sortScore === 'number' ? clampScore(post.sortScore) : null
+        const nextRecency = typeof post?.recencyScore === 'number' ? clampScore(post.recencyScore) : null
+        if (nextEvidence !== null && (existing.evidenceScore === null || nextEvidence > existing.evidenceScore)) {
+          existing.evidenceScore = nextEvidence
+        }
+        if (nextSort !== null && (existing.sortScore === null || nextSort > existing.sortScore)) {
+          existing.sortScore = nextSort
+        }
+        if (nextRecency !== null && (existing.recencyScore === null || nextRecency > existing.recencyScore)) {
+          existing.recencyScore = nextRecency
+        }
+        if (!existing.classificationMethod && post?.classificationMethod) {
+          existing.classificationMethod = post.classificationMethod
+        }
         return
       }
 
@@ -175,6 +190,9 @@ function buildDataFromTopicBuckets(report) {
         platform,
         sentiment: normalizeSentimentValue(post?.sentiment || post?.camp || 'neutral'),
         evidenceScore: extractEvidenceScore(post),
+        recencyScore: typeof post?.recencyScore === 'number' ? clampScore(post.recencyScore) : null,
+        sortScore: typeof post?.sortScore === 'number' ? clampScore(post.sortScore) : null,
+        classificationMethod: post?.classificationMethod || null,
         text,
         topicIds: [bucketId],
         link,
@@ -182,10 +200,16 @@ function buildDataFromTopicBuckets(report) {
     })
   })
 
-  const quotes = Array.from(quoteMap.values()).map((quote, index) => ({
-    ...quote,
-    id: `q-${index + 1}`,
-  }))
+  const quotes = Array.from(quoteMap.values())
+    .sort((a, b) => {
+      const sortGap = (b.sortScore ?? -1) - (a.sortScore ?? -1)
+      if (sortGap !== 0) return sortGap
+      return (b.evidenceScore ?? -1) - (a.evidenceScore ?? -1)
+    })
+    .map((quote, index) => ({
+      ...quote,
+      id: `q-${index + 1}`,
+    }))
 
   if (!topics.length || !quotes.length) return null
   return {

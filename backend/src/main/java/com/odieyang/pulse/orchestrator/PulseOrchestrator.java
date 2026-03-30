@@ -12,10 +12,12 @@ import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -70,6 +72,21 @@ public class PulseOrchestrator {
 
     @Value("${crawler.target-total:50}")
     private int crawlerTargetTotal;
+
+    @Value("${crawler.boundary.max-posts:24}")
+    private int crawlerBoundaryMaxPosts = 24;
+
+    @Value("${crawler.coverage.warn-percent:70}")
+    private int crawlerCoverageWarnPercent = 70;
+
+    @Value("${crawler.coverage.critical-percent:45}")
+    private int crawlerCoverageCriticalPercent = 45;
+
+    @Value("${crawler.unassigned.warn-percent:40}")
+    private int crawlerUnassignedWarnPercent = 40;
+
+    @Value("${crawler.platform-imbalance.warn-gap:70}")
+    private int crawlerPlatformImbalanceWarnGap = 70;
 
     public PulseReport analyze(String topic) {
         return analyze(topic, null, "en-US");
@@ -177,12 +194,14 @@ public class PulseOrchestrator {
             int targetTotal = Math.max(1, crawlerTargetTotal);
             CrawlProjection crawlProjection = projectCrawledPosts(reddit, twitter, targetTotal);
             List<TopicBucket> topicBuckets = buildTopicBuckets(controversyTopics, crawlProjection.allPosts());
+            int redditCount = sizeOfPosts(reddit);
+            int twitterCount = sizeOfPosts(twitter);
             int unassignedCount = countUnassignedPosts(topicBuckets);
-            CrawlerStats crawlerStats = new CrawlerStats(
+            CrawlerStats crawlerStats = buildCrawlerStats(
                     targetTotal,
                     crawlProjection.allPosts().size(),
-                    reddit.posts().size(),
-                    twitter.posts().size(),
+                    redditCount,
+                    twitterCount,
                     crawlProjection.dedupedCount(),
                     unassignedCount
             );
@@ -901,9 +920,9 @@ public class PulseOrchestrator {
     }
 
     private CrawlProjection projectCrawledPosts(RawPosts reddit, RawPosts twitter, int targetTotal) {
-        List<CrawledPost> merged = new ArrayList<>();
-        appendCrawledPosts(merged, reddit);
-        appendCrawledPosts(merged, twitter);
+        List<CrawledPost> redditPosts = toCrawledPosts(reddit);
+        List<CrawledPost> twitterPosts = toCrawledPosts(twitter);
+        List<CrawledPost> merged = interleavePosts(redditPosts, twitterPosts);
 
         LinkedHashMap<String, CrawledPost> deduped = new LinkedHashMap<>();
         for (CrawledPost post : merged) {
@@ -918,9 +937,10 @@ public class PulseOrchestrator {
         return new CrawlProjection(capped, dedupedCount);
     }
 
-    private void appendCrawledPosts(List<CrawledPost> output, RawPosts rawPosts) {
+    private List<CrawledPost> toCrawledPosts(RawPosts rawPosts) {
+        List<CrawledPost> output = new ArrayList<>();
         if (rawPosts == null || rawPosts.posts() == null) {
-            return;
+            return output;
         }
         String platform = rawPosts.platform() == null || rawPosts.platform().isBlank()
                 ? "unknown"
@@ -936,6 +956,21 @@ public class PulseOrchestrator {
                     post.url()
             ));
         }
+        return output;
+    }
+
+    private List<CrawledPost> interleavePosts(List<CrawledPost> first, List<CrawledPost> second) {
+        List<CrawledPost> merged = new ArrayList<>(first.size() + second.size());
+        int max = Math.max(first.size(), second.size());
+        for (int i = 0; i < max; i++) {
+            if (i < first.size()) {
+                merged.add(first.get(i));
+            }
+            if (i < second.size()) {
+                merged.add(second.get(i));
+            }
+        }
+        return merged;
     }
 
     private String crawledPostDedupKey(CrawledPost post) {
@@ -951,42 +986,234 @@ public class PulseOrchestrator {
     private List<TopicBucket> buildTopicBuckets(List<ControversyTopic> topics, List<CrawledPost> posts) {
         List<CrawledPost> safePosts = posts == null ? List.of() : posts;
         if (topics == null || topics.isEmpty()) {
-            return List.of(new TopicBucket("unassigned", "Unassigned", safePosts));
+            List<CrawledPost> rankedUnassigned = new ArrayList<>();
+            for (int i = 0; i < safePosts.size(); i++) {
+                CrawledPost post = safePosts.get(i);
+                rankedUnassigned.add(new CrawledPost(
+                        post.platform(),
+                        post.title(),
+                        post.snippet(),
+                        post.url(),
+                        null,
+                        recencyScore(i, safePosts.size()),
+                        null,
+                        "unassigned"
+                ));
+            }
+            return List.of(new TopicBucket("unassigned", "Unassigned", rankedUnassigned));
         }
 
-        List<TopicBucket> buckets = new ArrayList<>();
-        Set<String> assignedKeys = new LinkedHashSet<>();
-
+        List<TopicDescriptor> descriptors = new ArrayList<>();
         for (int i = 0; i < topics.size(); i++) {
             ControversyTopic topic = topics.get(i);
             String topicId = "t" + (i + 1);
             String topicName = topic == null || topic.aspect() == null || topic.aspect().isBlank()
                     ? "Topic " + (i + 1)
                     : topic.aspect().trim();
-            List<String> keywords = topicKeywords(topicName);
-            List<CrawledPost> matches = new ArrayList<>();
+            int topicHeat = clampScore(topic == null || topic.heat() == null ? 50 : topic.heat());
+            descriptors.add(new TopicDescriptor(topicId, topicName, topicHeat, topicKeywords(topicName)));
+        }
 
-            for (CrawledPost post : safePosts) {
-                if (topicMatchScore(topicName, keywords, post) <= 0) {
-                    continue;
+        LinkedHashMap<String, CrawledPost> postByKey = new LinkedHashMap<>();
+        LinkedHashMap<String, Integer> postOrder = new LinkedHashMap<>();
+        for (int i = 0; i < safePosts.size(); i++) {
+            CrawledPost post = safePosts.get(i);
+            String key = crawledPostDedupKey(post);
+            postByKey.putIfAbsent(key, post);
+            postOrder.putIfAbsent(key, i);
+        }
+
+        Map<String, Map<Integer, Integer>> ruleScoreLookup = new LinkedHashMap<>();
+        Map<String, Map<Integer, TopicAssignment>> assignedByPost = new LinkedHashMap<>();
+        List<CrawledPost> boundaryPosts = new ArrayList<>();
+        List<String> boundaryKeys = new ArrayList<>();
+
+        for (Map.Entry<String, CrawledPost> entry : postByKey.entrySet()) {
+            String key = entry.getKey();
+            CrawledPost post = entry.getValue();
+            Map<Integer, Integer> scoreByTopic = scorePostAcrossTopics(descriptors, post);
+            ruleScoreLookup.put(key, scoreByTopic);
+
+            int bestScore = scoreByTopic.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+            int tieCount = (int) scoreByTopic.values().stream().filter(score -> score == bestScore).count();
+            List<Integer> directIndexes = scoreByTopic.entrySet().stream()
+                    .filter(e -> e.getValue() >= 2 && e.getValue() >= Math.max(2, bestScore - 1))
+                    .map(Map.Entry::getKey)
+                    .toList();
+
+            if (!directIndexes.isEmpty()) {
+                for (Integer topicIndex : directIndexes) {
+                    int ruleScore = scoreByTopic.getOrDefault(topicIndex, 0);
+                    addTopicAssignment(assignedByPost, key, topicIndex, ruleScore, false);
                 }
-                matches.add(post);
-                assignedKeys.add(crawledPostDedupKey(post));
             }
 
-            buckets.add(new TopicBucket(topicId, topicName, matches));
+            boolean boundaryCandidate = scoreByTopic.isEmpty() || bestScore <= 1 || tieCount > 1;
+            if (boundaryCandidate) {
+                boundaryKeys.add(key);
+                boundaryPosts.add(post);
+            }
+        }
+
+        if (!boundaryPosts.isEmpty()) {
+            int maxBoundary = Math.max(1, crawlerBoundaryMaxPosts);
+            int boundaryCount = Math.min(maxBoundary, boundaryPosts.size());
+            List<CrawledPost> llmCandidates = boundaryPosts.subList(0, boundaryCount);
+            List<String> llmCandidateKeys = boundaryKeys.subList(0, boundaryCount);
+            List<String> topicNames = descriptors.stream().map(TopicDescriptor::topicName).toList();
+            List<List<Integer>> llmAssignments = safeRun(
+                    () -> synthesisAgent.classifyBoundaryTopicIndexes(topicNames, llmCandidates),
+                    List.<List<Integer>>of(),
+                    "BoundaryClassifier"
+            );
+
+            for (int i = 0; i < llmCandidateKeys.size(); i++) {
+                List<Integer> topicIndexes = i < llmAssignments.size() ? llmAssignments.get(i) : List.of();
+                if (topicIndexes == null || topicIndexes.isEmpty()) {
+                    continue;
+                }
+                String key = llmCandidateKeys.get(i);
+                Map<Integer, Integer> scoreByTopic = ruleScoreLookup.getOrDefault(key, Map.of());
+                for (Integer oneBased : topicIndexes) {
+                    if (oneBased == null) {
+                        continue;
+                    }
+                    int topicIndex = oneBased - 1;
+                    if (topicIndex < 0 || topicIndex >= descriptors.size()) {
+                        continue;
+                    }
+                    int ruleScore = scoreByTopic.getOrDefault(topicIndex, 0);
+                    addTopicAssignment(assignedByPost, key, topicIndex, ruleScore, true);
+                }
+            }
+        }
+
+        List<TopicBucket> buckets = new ArrayList<>();
+        Set<String> assignedKeys = assignedByPost.keySet();
+
+        for (int i = 0; i < descriptors.size(); i++) {
+            TopicDescriptor descriptor = descriptors.get(i);
+            List<CrawledPost> ranked = new ArrayList<>();
+
+            for (Map.Entry<String, Map<Integer, TopicAssignment>> entry : assignedByPost.entrySet()) {
+                String key = entry.getKey();
+                TopicAssignment assignment = entry.getValue().get(i);
+                if (assignment == null) {
+                    continue;
+                }
+
+                CrawledPost source = postByKey.get(key);
+                if (source == null) {
+                    continue;
+                }
+
+                int order = postOrder.getOrDefault(key, safePosts.size());
+                int recencyScore = recencyScore(order, safePosts.size());
+                int evidenceScore = evidenceScore(assignment, source);
+                int sortScore = sortScore(descriptor.heat(), recencyScore, evidenceScore);
+                ranked.add(new CrawledPost(
+                        source.platform(),
+                        source.title(),
+                        source.snippet(),
+                        source.url(),
+                        evidenceScore,
+                        recencyScore,
+                        sortScore,
+                        assignment.llmAssigned()
+                                ? (assignment.ruleScore() > 0 ? "rule+llm" : "llm")
+                                : "rule"
+                ));
+            }
+
+            ranked.sort(Comparator
+                    .comparing((CrawledPost post) -> post.sortScore() == null ? 0 : post.sortScore())
+                    .reversed()
+                    .thenComparing(post -> post.evidenceScore() == null ? 0 : post.evidenceScore(), Comparator.reverseOrder())
+                    .thenComparing(post -> post.recencyScore() == null ? 0 : post.recencyScore(), Comparator.reverseOrder()));
+            buckets.add(new TopicBucket(descriptor.topicId(), descriptor.topicName(), ranked));
         }
 
         List<CrawledPost> unassigned = new ArrayList<>();
-        for (CrawledPost post : safePosts) {
-            String key = crawledPostDedupKey(post);
+        for (Map.Entry<String, CrawledPost> entry : postByKey.entrySet()) {
+            String key = entry.getKey();
             if (!assignedKeys.contains(key)) {
-                unassigned.add(post);
+                CrawledPost post = entry.getValue();
+                int order = postOrder.getOrDefault(key, safePosts.size());
+                unassigned.add(new CrawledPost(
+                        post.platform(),
+                        post.title(),
+                        post.snippet(),
+                        post.url(),
+                        null,
+                        recencyScore(order, safePosts.size()),
+                        null,
+                        "unassigned"
+                ));
             }
         }
 
         buckets.add(new TopicBucket("unassigned", "Unassigned", unassigned));
         return buckets;
+    }
+
+    private Map<Integer, Integer> scorePostAcrossTopics(List<TopicDescriptor> descriptors, CrawledPost post) {
+        Map<Integer, Integer> scoreByTopic = new LinkedHashMap<>();
+        for (int i = 0; i < descriptors.size(); i++) {
+            TopicDescriptor descriptor = descriptors.get(i);
+            int score = topicMatchScore(descriptor.topicName(), descriptor.keywords(), post);
+            if (score > 0) {
+                scoreByTopic.put(i, score);
+            }
+        }
+        return scoreByTopic;
+    }
+
+    private void addTopicAssignment(
+            Map<String, Map<Integer, TopicAssignment>> assignedByPost,
+            String postKey,
+            int topicIndex,
+            int ruleScore,
+            boolean llmAssigned
+    ) {
+        Map<Integer, TopicAssignment> assignments = assignedByPost.computeIfAbsent(postKey, ignored -> new LinkedHashMap<>());
+        TopicAssignment previous = assignments.get(topicIndex);
+        if (previous == null) {
+            assignments.put(topicIndex, new TopicAssignment(ruleScore, llmAssigned));
+            return;
+        }
+        assignments.put(topicIndex, new TopicAssignment(
+                Math.max(previous.ruleScore(), ruleScore),
+                previous.llmAssigned() || llmAssigned
+        ));
+    }
+
+    private int recencyScore(int order, int totalPosts) {
+        if (totalPosts <= 1) {
+            return 100;
+        }
+        double ratio = 1.0 - ((double) Math.max(0, order) / (double) (totalPosts - 1));
+        return clampScore((int) Math.round(ratio * 100));
+    }
+
+    private int evidenceScore(TopicAssignment assignment, CrawledPost post) {
+        int scoreFromRule = assignment.ruleScore() >= 10
+                ? 92
+                : clampScore(48 + assignment.ruleScore() * 12);
+        if (assignment.ruleScore() <= 0) {
+            scoreFromRule = 56;
+        }
+        if (assignment.llmAssigned()) {
+            scoreFromRule += 4;
+        }
+        if (post.url() != null && !post.url().isBlank()) {
+            scoreFromRule += 4;
+        }
+        return clampScore(scoreFromRule);
+    }
+
+    private int sortScore(int topicHeat, int recencyScore, int evidenceScore) {
+        double weighted = topicHeat * 0.30 + recencyScore * 0.25 + evidenceScore * 0.45;
+        return clampScore((int) Math.round(weighted));
     }
 
     private int countUnassignedPosts(List<TopicBucket> topicBuckets) {
@@ -1002,6 +1229,72 @@ public class PulseOrchestrator {
             }
         }
         return 0;
+    }
+
+    private CrawlerStats buildCrawlerStats(
+            int targetTotal,
+            int fetchedTotal,
+            int redditCount,
+            int twitterCount,
+            int dedupedCount,
+            int unassignedCount
+    ) {
+        int safeTarget = Math.max(1, targetTotal);
+        int coveragePercent = clampScore((int) Math.round((fetchedTotal * 100.0) / safeTarget));
+        int unassignedPercent = fetchedTotal <= 0
+                ? 0
+                : clampScore((int) Math.round((unassignedCount * 100.0) / fetchedTotal));
+        int platformGapPercent = fetchedTotal <= 0
+                ? 0
+                : clampScore((int) Math.round((Math.abs(redditCount - twitterCount) * 100.0) / fetchedTotal));
+
+        List<String> coverageAlerts = new ArrayList<>();
+        if (coveragePercent < crawlerCoverageCriticalPercent) {
+            coverageAlerts.add("Critical crawl coverage: %d%% (<%d%% target).".formatted(
+                    coveragePercent,
+                    crawlerCoverageCriticalPercent
+            ));
+        } else if (coveragePercent < crawlerCoverageWarnPercent) {
+            coverageAlerts.add("Low crawl coverage: %d%% (<%d%% target).".formatted(
+                    coveragePercent,
+                    crawlerCoverageWarnPercent
+            ));
+        }
+        if (unassignedPercent >= crawlerUnassignedWarnPercent && fetchedTotal > 0) {
+            coverageAlerts.add("High unassigned ratio: %d%% posts could not be confidently mapped.".formatted(
+                    unassignedPercent
+            ));
+        }
+        if (platformGapPercent >= crawlerPlatformImbalanceWarnGap && fetchedTotal >= 10) {
+            coverageAlerts.add("Platform imbalance detected: Reddit %d vs Twitter %d.".formatted(
+                    redditCount,
+                    twitterCount
+            ));
+        }
+
+        String coverageLevel = "ok";
+        if (!coverageAlerts.isEmpty()) {
+            coverageLevel = coveragePercent < crawlerCoverageCriticalPercent ? "critical" : "warning";
+        }
+
+        return new CrawlerStats(
+                safeTarget,
+                fetchedTotal,
+                redditCount,
+                twitterCount,
+                dedupedCount,
+                unassignedCount,
+                coveragePercent,
+                coverageLevel,
+                coverageAlerts
+        );
+    }
+
+    private int sizeOfPosts(RawPosts rawPosts) {
+        if (rawPosts == null || rawPosts.posts() == null) {
+            return 0;
+        }
+        return rawPosts.posts().size();
     }
 
     private List<String> topicKeywords(String topicName) {
@@ -1061,7 +1354,7 @@ public class PulseOrchestrator {
             List<ControversyTopic> topics,
             List<FlipSignal> flipSignals
     ) {
-        int coverage = clampScore(Math.min(100, (reddit.posts().size() + twitter.posts().size()) * 4));
+        int coverage = clampScore(Math.min(100, (sizeOfPosts(reddit) + sizeOfPosts(twitter)) * 4));
         int diversity = clampScore(60 + Math.min(20, topics.size() * 5));
         int agreement = clampScore(confidenceScore);
         int evidenceSupport = clampScore(70 - Math.min(30, flipSignals.size() * 8));
@@ -1106,6 +1399,18 @@ public class PulseOrchestrator {
     private interface ThrowingSupplier<T> {
         T get() throws Exception;
     }
+
+    private record TopicDescriptor(
+            String topicId,
+            String topicName,
+            int heat,
+            List<String> keywords
+    ) {}
+
+    private record TopicAssignment(
+            int ruleScore,
+            boolean llmAssigned
+    ) {}
 
     private record CrawlProjection(
             List<CrawledPost> allPosts,

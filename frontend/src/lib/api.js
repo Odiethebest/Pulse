@@ -22,11 +22,19 @@ function normalizePlatformLabel(platform) {
 }
 
 function normalizeCrawledPost(post) {
+  const evidenceScore = Number(post?.evidenceScore)
+  const recencyScore = Number(post?.recencyScore)
+  const sortScore = Number(post?.sortScore)
+
   return {
     platform: normalizePlatformLabel(post?.platform),
     title: post?.title || '',
     snippet: post?.snippet || '',
     url: post?.url || '',
+    evidenceScore: Number.isFinite(evidenceScore) ? clampScore(evidenceScore) : null,
+    recencyScore: Number.isFinite(recencyScore) ? clampScore(recencyScore) : null,
+    sortScore: Number.isFinite(sortScore) ? clampScore(sortScore) : null,
+    classificationMethod: post?.classificationMethod || null,
   }
 }
 
@@ -45,6 +53,7 @@ function normalizeCrawlerStats(stats, allPosts) {
   const redditCount = Number(stats?.redditCount)
   const twitterCount = Number(stats?.twitterCount)
   const unassignedCount = Number(stats?.unassignedCount)
+  const coveragePercent = Number(stats?.coveragePercent)
 
   return {
     targetTotal: Number.isFinite(targetTotal) && targetTotal > 0 ? Math.round(targetTotal) : 50,
@@ -53,6 +62,11 @@ function normalizeCrawlerStats(stats, allPosts) {
     redditCount: Number.isFinite(redditCount) && redditCount >= 0 ? Math.round(redditCount) : null,
     twitterCount: Number.isFinite(twitterCount) && twitterCount >= 0 ? Math.round(twitterCount) : null,
     unassignedCount: Number.isFinite(unassignedCount) && unassignedCount >= 0 ? Math.round(unassignedCount) : null,
+    coveragePercent: Number.isFinite(coveragePercent) && coveragePercent >= 0 ? clampScore(coveragePercent) : null,
+    coverageLevel: typeof stats?.coverageLevel === 'string' ? stats.coverageLevel : 'ok',
+    coverageAlerts: asArray(stats?.coverageAlerts)
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean),
   }
 }
 

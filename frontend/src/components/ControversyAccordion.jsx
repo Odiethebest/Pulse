@@ -53,6 +53,12 @@ function asCount(value) {
   return Math.round(n)
 }
 
+function coverageTone(level) {
+  if (String(level).toLowerCase() === 'critical') return 'text-rose-300 border-rose-500/30 bg-rose-500/10'
+  if (String(level).toLowerCase() === 'warning') return 'text-amber-300 border-amber-500/30 bg-amber-500/10'
+  return 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10'
+}
+
 function buildRhythmicQuotes(quotes) {
   if (!Array.isArray(quotes) || quotes.length === 0) return []
 
@@ -217,6 +223,11 @@ export default function ControversyAccordion({ data }) {
   const targetTotal = asCount(crawlerStats?.targetTotal)
   const dedupedCount = asCount(crawlerStats?.dedupedCount)
   const unassignedCount = asCount(crawlerStats?.unassignedCount)
+  const coveragePercent = asCount(crawlerStats?.coveragePercent)
+  const coverageLevel = String(crawlerStats?.coverageLevel || 'ok').toLowerCase()
+  const coverageAlerts = Array.isArray(crawlerStats?.coverageAlerts)
+    ? crawlerStats.coverageAlerts.filter(Boolean)
+    : []
 
   const topicNameMap = useMemo(
     () => new Map(topics.map((topic) => [topic.id, topic.name])),
@@ -269,6 +280,11 @@ export default function ControversyAccordion({ data }) {
             <span className="inline-flex items-center rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-zinc-400">
               Real posts fetched {fetchedTotal}/{targetTotal}
             </span>
+            {coveragePercent !== null && (
+              <span className={`inline-flex items-center rounded-full border px-2.5 py-1 ${coverageTone(coverageLevel)}`}>
+                Coverage {coveragePercent}%
+              </span>
+            )}
             {dedupedCount !== null && (
               <span className="inline-flex items-center rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-zinc-500">
                 Deduped {dedupedCount}
@@ -279,6 +295,13 @@ export default function ControversyAccordion({ data }) {
                 Unassigned {unassignedCount}
               </span>
             )}
+          </div>
+        )}
+        {coverageAlerts.length > 0 && (
+          <div className="mb-3 flex flex-col gap-1">
+            {coverageAlerts.slice(0, 3).map((alert) => (
+              <p key={alert} className="text-[11px] text-amber-300/90">{alert}</p>
+            ))}
           </div>
         )}
 

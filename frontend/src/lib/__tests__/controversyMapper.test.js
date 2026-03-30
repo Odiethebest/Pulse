@@ -46,4 +46,37 @@ describe('buildControversyBoardData', () => {
       data.quotes.some((quote) => /every week we get a new|timeline is split|hot take/i.test(quote.text))
     ).toBe(false)
   })
+
+  it('prefers topic bucket posts and keeps ranking metadata', () => {
+    const report = {
+      topicBuckets: [
+        {
+          topicId: 't1',
+          topicName: 'pricing',
+          posts: [
+            {
+              platform: 'reddit',
+              title: 'Price argument',
+              snippet: 'Thread exploded after update.',
+              url: 'https://reddit.com/r/music/99',
+              evidenceScore: 78,
+              recencyScore: 64,
+              sortScore: 80,
+              classificationMethod: 'rule+llm',
+            },
+          ],
+        },
+      ],
+      controversyTopics: [{ aspect: 'pricing', heat: 71 }],
+      crawlerStats: { fetchedTotal: 1, targetTotal: 50 },
+    }
+
+    const data = buildControversyBoardData(report)
+    expect(data.topics).toHaveLength(1)
+    expect(data.quotes).toHaveLength(1)
+    expect(data.quotes[0].text).toMatch(/thread exploded/i)
+    expect(data.quotes[0].evidenceScore).toBe(78)
+    expect(data.quotes[0].sortScore).toBe(80)
+    expect(data.quotes[0].classificationMethod).toBe('rule+llm')
+  })
 })
