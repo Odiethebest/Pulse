@@ -47,6 +47,12 @@ function isHighlightedQuote(quote) {
   return Number.isFinite(score) && score >= HIGHLIGHT_SCORE_THRESHOLD
 }
 
+function asCount(value) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.round(n)
+}
+
 function buildRhythmicQuotes(quotes) {
   if (!Array.isArray(quotes) || quotes.length === 0) return []
 
@@ -203,9 +209,14 @@ function QuoteCard({ quote, topicNameMap }) {
 export default function ControversyAccordion({ data }) {
   const topics = data?.topics ?? []
   const quotes = data?.quotes ?? []
+  const crawlerStats = data?.crawlerStats ?? null
   const [activeTopic, setActiveTopic] = useState(null)
   const [activePlatforms, setActivePlatforms] = useState(['Reddit', 'Twitter'])
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
+  const fetchedTotal = asCount(crawlerStats?.fetchedTotal)
+  const targetTotal = asCount(crawlerStats?.targetTotal)
+  const dedupedCount = asCount(crawlerStats?.dedupedCount)
+  const unassignedCount = asCount(crawlerStats?.unassignedCount)
 
   const topicNameMap = useMemo(
     () => new Map(topics.map((topic) => [topic.id, topic.name])),
@@ -253,6 +264,23 @@ export default function ControversyAccordion({ data }) {
           <p className="text-[11px] font-bold tracking-widest text-zinc-500 uppercase">Controversy Lenses</p>
         </div>
         <p className="hidden md:block text-sm text-zinc-400 mb-4">Select a lens and inspect the raw signal feed without hidden folders.</p>
+        {targetTotal !== null && fetchedTotal !== null && (
+          <div className="flex flex-wrap items-center gap-2 mb-3 text-[11px]">
+            <span className="inline-flex items-center rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-zinc-400">
+              Real posts fetched {fetchedTotal}/{targetTotal}
+            </span>
+            {dedupedCount !== null && (
+              <span className="inline-flex items-center rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-zinc-500">
+                Deduped {dedupedCount}
+              </span>
+            )}
+            {unassignedCount !== null && (
+              <span className="inline-flex items-center rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-zinc-500">
+                Unassigned {unassignedCount}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="relative">
           <div

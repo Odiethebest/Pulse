@@ -18,13 +18,16 @@ public class TavilySearchService {
 
     private final RestClient restClient;
     private final String apiKey;
+    private final int maxResults;
 
     public TavilySearchService(
             RestClient.Builder restClientBuilder,
-            @Value("${tavily.api-key}") String apiKey
+            @Value("${tavily.api-key}") String apiKey,
+            @Value("${tavily.max-results:10}") int maxResults
     ) {
         this.restClient = restClientBuilder.build();
         this.apiKey = apiKey;
+        this.maxResults = Math.max(1, Math.min(20, maxResults));
     }
 
     public List<RawPost> search(String query, List<String> includeDomains) {
@@ -34,7 +37,7 @@ public class TavilySearchService {
                 "api_key", apiKey,
                 "query", query,
                 "include_domains", includeDomains,
-                "max_results", 5
+                "max_results", maxResults
         );
 
         TavilyResponse response = restClient.post()

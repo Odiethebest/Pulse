@@ -188,7 +188,11 @@ function buildDataFromTopicBuckets(report) {
   }))
 
   if (!topics.length || !quotes.length) return null
-  return { topics, quotes }
+  return {
+    topics,
+    quotes,
+    crawlerStats: report?.crawlerStats ?? null,
+  }
 }
 
 function selectBalancedQuotes(scoredQuotes, fallbackQuotes) {
@@ -289,5 +293,9 @@ export function buildControversyBoardData(report) {
     id: `q-${index + 1}`,
   }))
 
-  return { topics, quotes }
+  return {
+    topics,
+    quotes,
+    crawlerStats: report?.crawlerStats ?? null,
+  }
 }
