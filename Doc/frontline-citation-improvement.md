@@ -5,49 +5,61 @@
 在 `Frontline Clash / Verdict` 中，引用经常出现固定模式（例如第一句 `[1][5]`、第二句 `[2][6]`）。  
 这会让引用看起来像“按位置配对”，而不是“按价值与相关性选证据”。
 
-## Root Cause
+## Root Cause (Updated)
 
-1. `Source [n]` 编号目前按平台顺序拼接：Reddit 在前，Twitter 在后。  
-2. `SentimentAgent` 对 `representativeQuotes` 只做字段规范化，不做价值重排。  
-3. `SynthesisAgent` 仅校验引用多样性，不校验“固定偏移配对”模式。  
+1. `Frontline Verdict` 实际展示的是 `quickTake[0]` 和 `quickTake[1]`，并非 `SynthesisAgent` 的 `## Frontline Clash` 文本。  
+2. `quickTake` 引用来自 `PulseOrchestrator.buildQuickTake`，核心取证在 `pickEvidenceUrlsForClaim`。  
+3. 当前 `pickEvidenceUrlsForClaim` 使用“等距取样 + 按 claimIndex 跳步”，会稳定产生机械配对。  
+   - 当 source 数为 6 时，极易出现 `C1 -> [1][5]`、`C2 -> [2][6]`。  
+4. 前端 `citationSources` 与后端 `Qn` 真实来源顺序可能不一致，造成 tooltip/来源感知错位（次要问题，不是固定配对主因）。  
 
-结果是：模型在写平台对照时，容易稳定选择 `1+5 / 2+6` 这类机械组合。
+结果是：即使改了 `SynthesisAgent`，`Frontline Verdict` 仍会在 `quickTake` 路径里复现 `1+5 / 2+6` 机械组合。
 
-## Improvement Strategy
+## Improvement Strategy (Root-cause First)
 
-### Phase 1 (Immediate, low risk)
+### Phase 1 — Replace QuickTake Evidence Picker (Highest Priority)
 
-改用“价值排序后再编号”的证据池，不再按平台先后编号。
+将 `pickEvidenceUrlsForClaim` 从“位置采样”改为“claim-quote 相关性打分选证据”。
 
-建议价值分：
+建议打分维度：
 
-- query/topic 相关性分
-- post 排序分（已有排序元数据可复用）
+- claim 文本与 quote 文本/URL 的语义相关性
 - quote.evidenceWeight
+- post 排序/质量分（如可用）
+- 平台多样性约束（可选）
 
-### Phase 2 (Medium risk)
+### Phase 2 — Add Mechanical Pairing Guard
 
-按 section 构建候选引用池：
+在 `quickTake` 生成后增加机械配对检测：
 
-- Lead 候选 id 池
-- Frontline 候选 id 池
+- 若前两句出现固定偏移配对（如 `[a][a+n]`、`[b][b+n]`），自动替换第二句候选引用。
+- 目标是即便排序偶然接近，也不落入固定模板。
 
-并在提示词中要求优先从对应池内引用。
+### Phase 3 — Frontend Citation Source Alignment (Secondary but Necessary)
 
-### Phase 3 (Quality guard)
+对 `Frontline Verdict` 的 `citationSources` 做顺序对齐：
 
-在输出校验中增加“固定配对模式检测”：
+- 按后端 `Qn` 的真实 source 顺序绑定 tooltip，不使用会重排的中间数据结构作为主来源。
+- 避免“编号正确但 tooltip 映射错位”的体验问题。
 
-- 若 Frontline 连续句重复出现同偏移配对（如 `x` 总配 `x+N`），触发重写。
+### Phase 4 — Tests and Regression Gate
+
+补齐回归测试：
+
+- 后端：6 条 source 场景下，前两句不再稳定产出 `1+5 / 2+6`。
+- 后端：固定偏移配对检测命中后会触发替换/重写。
+- 前端：`[Qn]` 始终绑定第 n 条真实 source。
 
 ## Implementation Order
 
-1. 先落地 Phase 1，验证引用分布是否明显改善。  
-2. 再加 Phase 2，提升与 query 的贴合度。  
-3. 最后加 Phase 3，长期防回归。  
+1. 先改 `quickTake` 取证算法（Phase 1），这是主因路径。  
+2. 再加机械配对防回归（Phase 2）。  
+3. 然后修前端 `Qn` 映射一致性（Phase 3）。  
+4. 最后补齐自动化测试与回归门禁（Phase 4）。  
 
 ## Definition of Done
 
-1. Frontline 不再长期稳定出现 `1+5 / 2+6` 固定模式。  
-2. 引用分布与 topic/query 相关性显著提升。  
-3. 相关测试可覆盖：排序、池约束、模式检测。  
+1. `Frontline Verdict` 在多次运行下不再稳定出现 `1+5 / 2+6` 固定模式。  
+2. `quickTake` 引用与 claim 语义相关性显著提升。  
+3. `Qn` 编号与前端 tooltip 来源一一对应。  
+4. 自动化测试覆盖：取证排序、机械配对检测、前端映射一致性。  
