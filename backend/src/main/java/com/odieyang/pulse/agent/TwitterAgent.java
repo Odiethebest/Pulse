@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Component
 @RequiredArgsConstructor
@@ -30,14 +31,25 @@ public class TwitterAgent {
 
         try {
             List<RawPost> allPosts = new ArrayList<>();
+            int filteredShellCount = 0;
             for (String query : queries) {
-                allPosts.addAll(tavilySearchService.search(query, TWITTER_DOMAINS));
+                List<RawPost> rawResults = tavilySearchService.search(query, TWITTER_DOMAINS);
+                for (RawPost post : rawResults) {
+                    if (isTwitterJavascriptShell(post)) {
+                        filteredShellCount += 1;
+                        continue;
+                    }
+                    allPosts.add(post);
+                }
             }
 
             long duration = System.currentTimeMillis() - start;
             publisher.publish(AgentEvent.completed("TwitterAgent",
-                    "Fetched %d posts from Twitter/X".formatted(allPosts.size()), duration));
-            log.info("TwitterAgent fetched {} posts in {}ms", allPosts.size(), duration);
+                    "Fetched %d posts from Twitter/X (filtered %d shell pages)"
+                            .formatted(allPosts.size(), filteredShellCount),
+                    duration));
+            log.info("TwitterAgent fetched {} posts in {}ms (filtered {} shell pages)",
+                    allPosts.size(), duration, filteredShellCount);
             return new RawPosts("twitter", allPosts);
 
         } catch (Exception e) {
@@ -46,5 +58,24 @@ public class TwitterAgent {
             log.error("TwitterAgent failed", e);
             throw new RuntimeException("TwitterAgent failed", e);
         }
+    }
+
+    private boolean isTwitterJavascriptShell(RawPost post) {
+        if (post == null) {
+            return false;
+        }
+        String merged = (post.title() == null ? "" : post.title())
+                + " "
+                + (post.snippet() == null ? "" : post.snippet());
+        String text = merged.toLowerCase(Locale.ROOT);
+
+        boolean hasJsBlocked = text.contains("javascript is disabled in this browser")
+                || text.contains("javascript is not available");
+        boolean hasEnablePrompt = text.contains("please enable javascript")
+                || text.contains("switch to a supported browser");
+        boolean hasHelpOrTerms = (text.contains("supported browsers") && text.contains("help center"))
+                || (text.contains("terms of service") && text.contains("privacy policy"));
+
+        return hasJsBlocked || (hasEnablePrompt && hasHelpOrTerms);
     }
 }

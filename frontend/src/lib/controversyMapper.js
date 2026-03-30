@@ -117,6 +117,23 @@ function resolvePostText(post) {
   return text
 }
 
+function isTwitterShellText(value) {
+  const text = normalize(value)
+  if (!text) return false
+
+  const hasJsBlocked =
+    text.includes('javascript is disabled in this browser')
+    || text.includes('javascript is not available')
+  const hasEnablePrompt =
+    text.includes('please enable javascript')
+    || text.includes('switch to a supported browser')
+  const hasHelpOrTerms =
+    (text.includes('supported browsers') && text.includes('help center'))
+    || (text.includes('terms of service') && text.includes('privacy policy'))
+
+  return hasJsBlocked || (hasEnablePrompt && hasHelpOrTerms)
+}
+
 function bucketHeatByName(report) {
   const map = new Map()
   const topics = Array.isArray(report?.controversyTopics) ? report.controversyTopics : []
@@ -158,6 +175,7 @@ function buildDataFromTopicBuckets(report) {
     posts.forEach((post) => {
       const text = resolvePostText(post)
       if (!text) return
+      if (isTwitterShellText(text)) return
 
       const link = String(post?.url || '').trim() || null
       const platform = platformKey(post?.platform)
@@ -241,7 +259,7 @@ export function collectQuotes(report) {
   return [
     ...((report?.redditSentiment?.representativeQuotes ?? []).map((quote) => ({ ...quote, platform: 'Reddit' }))),
     ...((report?.twitterSentiment?.representativeQuotes ?? []).map((quote) => ({ ...quote, platform: 'Twitter' }))),
-  ]
+  ].filter((quote) => !isTwitterShellText(quote?.text))
 }
 
 export function buildControversyItems(report) {

@@ -79,4 +79,32 @@ describe('buildControversyBoardData', () => {
     expect(data.quotes[0].sortScore).toBe(80)
     expect(data.quotes[0].classificationMethod).toBe('rule+llm')
   })
+
+  it('filters Twitter javascript shell text from bucket posts', () => {
+    const report = {
+      topicBuckets: [
+        {
+          topicId: 't1',
+          topicName: 'pop influence',
+          posts: [
+            {
+              platform: 'twitter',
+              snippet: "We've detected that JavaScript is disabled in this browser. Please enable JavaScript.",
+              url: 'https://x.com/shell',
+            },
+            {
+              platform: 'twitter',
+              snippet: 'Fans are arguing about award impact this week.',
+              url: 'https://x.com/real',
+            },
+          ],
+        },
+      ],
+      controversyTopics: [{ aspect: 'pop influence', heat: 62 }],
+    }
+
+    const data = buildControversyBoardData(report)
+    expect(data.quotes).toHaveLength(1)
+    expect(data.quotes[0].link).toBe('https://x.com/real')
+  })
 })
