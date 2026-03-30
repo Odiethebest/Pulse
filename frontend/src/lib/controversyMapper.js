@@ -112,6 +112,85 @@ function dedupeQuotes(quotes) {
   })
 }
 
+function resolvePostText(post) {
+  const text = String(post?.text ?? post?.snippet ?? post?.title ?? '').replace(/\s+/g, ' ').trim()
+  return text
+}
+
+function bucketHeatByName(report) {
+  const map = new Map()
+  const topics = Array.isArray(report?.controversyTopics) ? report.controversyTopics : []
+  topics.forEach((topic) => {
+    const name = String(topic?.aspect ?? '').trim()
+    if (!name) return
+    map.set(name.toLowerCase(), clampScore(topic?.heat ?? 50))
+  })
+  return map
+}
+
+function buildDataFromTopicBuckets(report) {
+  const buckets = Array.isArray(report?.topicBuckets) ? report.topicBuckets : []
+  if (buckets.length === 0) return null
+
+  const heatLookup = bucketHeatByName(report)
+  const topics = buckets.map((bucket, index) => {
+    const topicId = String(bucket?.topicId || `t${index + 1}`)
+    const topicName = String(bucket?.topicName || `topic ${index + 1}`).trim()
+    const normalizedName = topicName.toLowerCase()
+    const fallbackHeat = topicId.toLowerCase() === 'unassigned' ? 35 : 50
+    const heat = heatLookup.has(normalizedName)
+      ? heatLookup.get(normalizedName)
+      : fallbackHeat
+
+    return {
+      id: topicId,
+      name: topicName || `topic ${index + 1}`,
+      heat: clampScore(heat),
+    }
+  })
+
+  const quoteMap = new Map()
+  buckets.forEach((bucket) => {
+    const bucketId = String(bucket?.topicId || '').trim()
+    if (!bucketId) return
+
+    const posts = Array.isArray(bucket?.posts) ? bucket.posts : []
+    posts.forEach((post) => {
+      const text = resolvePostText(post)
+      if (!text) return
+
+      const link = String(post?.url || '').trim() || null
+      const platform = platformKey(post?.platform)
+      const key = `${platform}::${link || ''}::${text.toLowerCase()}`
+
+      if (quoteMap.has(key)) {
+        const existing = quoteMap.get(key)
+        if (!existing.topicIds.includes(bucketId)) {
+          existing.topicIds.push(bucketId)
+        }
+        return
+      }
+
+      quoteMap.set(key, {
+        platform,
+        sentiment: normalizeSentimentValue(post?.sentiment || post?.camp || 'neutral'),
+        evidenceScore: extractEvidenceScore(post),
+        text,
+        topicIds: [bucketId],
+        link,
+      })
+    })
+  })
+
+  const quotes = Array.from(quoteMap.values()).map((quote, index) => ({
+    ...quote,
+    id: `q-${index + 1}`,
+  }))
+
+  if (!topics.length || !quotes.length) return null
+  return { topics, quotes }
+}
+
 function selectBalancedQuotes(scoredQuotes, fallbackQuotes) {
   const base = dedupeQuotes([...scoredQuotes, ...fallbackQuotes])
   const reddit = base.filter((quote) => platformKey(quote.platform) === 'Reddit').slice(0, 2)
@@ -175,6 +254,9 @@ export function buildControversyItems(report) {
 }
 
 export function buildControversyBoardData(report) {
+  const bucketData = buildDataFromTopicBuckets(report)
+  if (bucketData) return bucketData
+
   const topicSource = report?.controversyTopics ?? []
   const topics = topicSource.slice(0, 8).map((topic, index) => ({
     id: `t${index + 1}`,

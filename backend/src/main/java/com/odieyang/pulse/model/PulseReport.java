@@ -26,7 +26,10 @@ public record PulseReport(
         List<ClaimEvidenceLink> claimEvidenceMap,
         List<ClaimAnnotation> claimAnnotations,
         List<RiskFlag> riskFlags,
-        List<RevisionAnchor> revisionAnchors
+        List<RevisionAnchor> revisionAnchors,
+        List<CrawledPost> allPosts,
+        CrawlerStats crawlerStats,
+        List<TopicBucket> topicBuckets
 ) {
     public PulseReport(
             String topic,
@@ -62,6 +65,66 @@ public record PulseReport(
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    public PulseReport(
+            String topic,
+            String topicSummary,
+            SentimentResult redditSentiment,
+            SentimentResult twitterSentiment,
+            String platformDiff,
+            String synthesis,
+            CriticResult critique,
+            int confidenceScore,
+            boolean debateTriggered,
+            List<AgentEvent> executionTrace,
+            List<String> quickTake,
+            Integer dramaScore,
+            Integer polarizationScore,
+            Integer heatScore,
+            Integer flipRiskScore,
+            ConfidenceBreakdown confidenceBreakdown,
+            CampDistribution campDistribution,
+            List<ControversyTopic> controversyTopics,
+            List<FlipSignal> flipSignals,
+            List<String> revisionDelta,
+            List<ClaimEvidenceLink> claimEvidenceMap,
+            List<ClaimAnnotation> claimAnnotations,
+            List<RiskFlag> riskFlags,
+            List<RevisionAnchor> revisionAnchors
+    ) {
+        this(
+                topic,
+                topicSummary,
+                redditSentiment,
+                twitterSentiment,
+                platformDiff,
+                synthesis,
+                critique,
+                confidenceScore,
+                debateTriggered,
+                executionTrace,
+                quickTake,
+                dramaScore,
+                polarizationScore,
+                heatScore,
+                flipRiskScore,
+                confidenceBreakdown,
+                campDistribution,
+                controversyTopics,
+                flipSignals,
+                revisionDelta,
+                claimEvidenceMap,
+                claimAnnotations,
+                riskFlags,
+                revisionAnchors,
                 null,
                 null,
                 null

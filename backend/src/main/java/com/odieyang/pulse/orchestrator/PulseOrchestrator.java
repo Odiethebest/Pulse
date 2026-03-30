@@ -12,8 +12,11 @@ import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -64,6 +67,9 @@ public class PulseOrchestrator {
 
     @Value("${debate.quality.min-claim-coverage:60}")
     private int minClaimEvidenceCoverage;
+
+    @Value("${crawler.target-total:50}")
+    private int crawlerTargetTotal;
 
     public PulseReport analyze(String topic) {
         return analyze(topic, null, "en-US");
@@ -168,6 +174,18 @@ public class PulseOrchestrator {
             int heatScore = clampScore(conflictResult.heatScore());
             int flipRiskScore = clampScore(flipRiskResult.flipRiskScore());
             List<ControversyTopic> controversyTopics = chooseControversyTopics(aspectResult, redditSentiment, twitterSentiment);
+            int targetTotal = Math.max(1, crawlerTargetTotal);
+            CrawlProjection crawlProjection = projectCrawledPosts(reddit, twitter, targetTotal);
+            List<TopicBucket> topicBuckets = buildTopicBuckets(controversyTopics, crawlProjection.allPosts());
+            int unassignedCount = countUnassignedPosts(topicBuckets);
+            CrawlerStats crawlerStats = new CrawlerStats(
+                    targetTotal,
+                    crawlProjection.allPosts().size(),
+                    reddit.posts().size(),
+                    twitter.posts().size(),
+                    crawlProjection.dedupedCount(),
+                    unassignedCount
+            );
             int dramaScore = computeDramaScore(heatScore, polarizationScore, controversyTopics);
             List<FlipSignal> flipSignals = chooseFlipSignals(flipRiskResult, critique);
             List<String> revisionDelta = chooseRevisionDelta(critique);
@@ -232,7 +250,10 @@ public class PulseOrchestrator {
                     claimEvidenceMap,
                     claimAnnotations,
                     riskFlags,
-                    revisionAnchors
+                    revisionAnchors,
+                    crawlProjection.allPosts(),
+                    crawlerStats,
+                    topicBuckets
             );
         } finally {
             traceSubscription.dispose();
@@ -879,6 +900,160 @@ public class PulseOrchestrator {
         return sb.toString();
     }
 
+    private CrawlProjection projectCrawledPosts(RawPosts reddit, RawPosts twitter, int targetTotal) {
+        List<CrawledPost> merged = new ArrayList<>();
+        appendCrawledPosts(merged, reddit);
+        appendCrawledPosts(merged, twitter);
+
+        LinkedHashMap<String, CrawledPost> deduped = new LinkedHashMap<>();
+        for (CrawledPost post : merged) {
+            String key = crawledPostDedupKey(post);
+            deduped.putIfAbsent(key, post);
+        }
+
+        int dedupedCount = deduped.size();
+        List<CrawledPost> capped = deduped.values().stream()
+                .limit(targetTotal)
+                .toList();
+        return new CrawlProjection(capped, dedupedCount);
+    }
+
+    private void appendCrawledPosts(List<CrawledPost> output, RawPosts rawPosts) {
+        if (rawPosts == null || rawPosts.posts() == null) {
+            return;
+        }
+        String platform = rawPosts.platform() == null || rawPosts.platform().isBlank()
+                ? "unknown"
+                : rawPosts.platform().trim().toLowerCase(Locale.ROOT);
+        for (RawPost post : rawPosts.posts()) {
+            if (post == null) {
+                continue;
+            }
+            output.add(new CrawledPost(
+                    platform,
+                    post.title(),
+                    post.snippet(),
+                    post.url()
+            ));
+        }
+    }
+
+    private String crawledPostDedupKey(CrawledPost post) {
+        String url = normalizeForMatch(post.url());
+        if (!url.isBlank()) {
+            return "url::" + url;
+        }
+        return "text::" + normalizeForMatch(post.platform())
+                + "::" + normalizeForMatch(post.title())
+                + "::" + normalizeForMatch(post.snippet());
+    }
+
+    private List<TopicBucket> buildTopicBuckets(List<ControversyTopic> topics, List<CrawledPost> posts) {
+        List<CrawledPost> safePosts = posts == null ? List.of() : posts;
+        if (topics == null || topics.isEmpty()) {
+            return List.of(new TopicBucket("unassigned", "Unassigned", safePosts));
+        }
+
+        List<TopicBucket> buckets = new ArrayList<>();
+        Set<String> assignedKeys = new LinkedHashSet<>();
+
+        for (int i = 0; i < topics.size(); i++) {
+            ControversyTopic topic = topics.get(i);
+            String topicId = "t" + (i + 1);
+            String topicName = topic == null || topic.aspect() == null || topic.aspect().isBlank()
+                    ? "Topic " + (i + 1)
+                    : topic.aspect().trim();
+            List<String> keywords = topicKeywords(topicName);
+            List<CrawledPost> matches = new ArrayList<>();
+
+            for (CrawledPost post : safePosts) {
+                if (topicMatchScore(topicName, keywords, post) <= 0) {
+                    continue;
+                }
+                matches.add(post);
+                assignedKeys.add(crawledPostDedupKey(post));
+            }
+
+            buckets.add(new TopicBucket(topicId, topicName, matches));
+        }
+
+        List<CrawledPost> unassigned = new ArrayList<>();
+        for (CrawledPost post : safePosts) {
+            String key = crawledPostDedupKey(post);
+            if (!assignedKeys.contains(key)) {
+                unassigned.add(post);
+            }
+        }
+
+        buckets.add(new TopicBucket("unassigned", "Unassigned", unassigned));
+        return buckets;
+    }
+
+    private int countUnassignedPosts(List<TopicBucket> topicBuckets) {
+        if (topicBuckets == null || topicBuckets.isEmpty()) {
+            return 0;
+        }
+        for (TopicBucket bucket : topicBuckets) {
+            if (bucket == null || bucket.topicId() == null) {
+                continue;
+            }
+            if ("unassigned".equalsIgnoreCase(bucket.topicId())) {
+                return bucket.posts() == null ? 0 : bucket.posts().size();
+            }
+        }
+        return 0;
+    }
+
+    private List<String> topicKeywords(String topicName) {
+        String normalized = normalizeForMatch(topicName);
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+
+        String[] parts = normalized.split("[^a-z0-9]+");
+        List<String> keywords = new ArrayList<>();
+        for (String part : parts) {
+            if (part == null || part.isBlank()) {
+                continue;
+            }
+            if (part.length() < 3) {
+                continue;
+            }
+            keywords.add(part);
+        }
+        return keywords;
+    }
+
+    private int topicMatchScore(String topicName, List<String> keywords, CrawledPost post) {
+        String topic = normalizeForMatch(topicName);
+        String source = normalizeForMatch((post.title() == null ? "" : post.title())
+                + " "
+                + (post.snippet() == null ? "" : post.snippet()));
+        if (source.isBlank()) {
+            return 0;
+        }
+        if (!topic.isBlank() && source.contains(topic)) {
+            return 10;
+        }
+
+        int score = 0;
+        for (String keyword : keywords) {
+            if (source.contains(keyword)) {
+                score += 1;
+            }
+        }
+        return score;
+    }
+
+    private String normalizeForMatch(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
     private ConfidenceBreakdown buildConfidenceBreakdown(
             int confidenceScore,
             RawPosts reddit,
@@ -931,4 +1106,9 @@ public class PulseOrchestrator {
     private interface ThrowingSupplier<T> {
         T get() throws Exception;
     }
+
+    private record CrawlProjection(
+            List<CrawledPost> allPosts,
+            int dedupedCount
+    ) {}
 }

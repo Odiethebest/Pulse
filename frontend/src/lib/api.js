@@ -14,6 +14,48 @@ const normalizeRunId = (runId) => {
   return value.length > 0 ? value : null
 }
 
+function normalizePlatformLabel(platform) {
+  const value = String(platform ?? '').toLowerCase()
+  if (value.includes('twitter') || value === 'x') return 'Twitter'
+  if (value.includes('reddit')) return 'Reddit'
+  return platform || 'Unknown'
+}
+
+function normalizeCrawledPost(post) {
+  return {
+    platform: normalizePlatformLabel(post?.platform),
+    title: post?.title || '',
+    snippet: post?.snippet || '',
+    url: post?.url || '',
+  }
+}
+
+function normalizeTopicBuckets(topicBuckets) {
+  return asArray(topicBuckets).map((bucket, index) => ({
+    topicId: bucket?.topicId || `t${index + 1}`,
+    topicName: bucket?.topicName || `Topic ${index + 1}`,
+    posts: asArray(bucket?.posts).map(normalizeCrawledPost),
+  }))
+}
+
+function normalizeCrawlerStats(stats, allPosts) {
+  const targetTotal = Number(stats?.targetTotal)
+  const fetchedTotal = Number(stats?.fetchedTotal)
+  const dedupedCount = Number(stats?.dedupedCount)
+  const redditCount = Number(stats?.redditCount)
+  const twitterCount = Number(stats?.twitterCount)
+  const unassignedCount = Number(stats?.unassignedCount)
+
+  return {
+    targetTotal: Number.isFinite(targetTotal) && targetTotal > 0 ? Math.round(targetTotal) : 50,
+    fetchedTotal: Number.isFinite(fetchedTotal) && fetchedTotal >= 0 ? Math.round(fetchedTotal) : allPosts.length,
+    dedupedCount: Number.isFinite(dedupedCount) && dedupedCount >= 0 ? Math.round(dedupedCount) : allPosts.length,
+    redditCount: Number.isFinite(redditCount) && redditCount >= 0 ? Math.round(redditCount) : null,
+    twitterCount: Number.isFinite(twitterCount) && twitterCount >= 0 ? Math.round(twitterCount) : null,
+    unassignedCount: Number.isFinite(unassignedCount) && unassignedCount >= 0 ? Math.round(unassignedCount) : null,
+  }
+}
+
 function normalizeQuote(quote) {
   const sentiment = (quote?.sentiment || 'neutral').toLowerCase()
   const camp = quote?.camp || (
@@ -94,6 +136,9 @@ function normalizeClaimEvidenceMap(rawMap, quickTake, redditSentiment, twitterSe
 function normalizeReport(payload) {
   const redditSentiment = normalizeSentiment(payload?.redditSentiment, 'Reddit')
   const twitterSentiment = normalizeSentiment(payload?.twitterSentiment, 'Twitter')
+  const allPosts = asArray(payload?.allPosts).map(normalizeCrawledPost)
+  const topicBuckets = normalizeTopicBuckets(payload?.topicBuckets)
+  const crawlerStats = normalizeCrawlerStats(payload?.crawlerStats, allPosts)
 
   const campDistribution = payload?.campDistribution || {
     support: ((redditSentiment.stanceDistribution?.support ?? 0) + (twitterSentiment.stanceDistribution?.support ?? 0)) / 2,
@@ -200,6 +245,9 @@ function normalizeReport(payload) {
     flipSignals,
     revisionDelta,
     claimEvidenceMap,
+    allPosts,
+    topicBuckets,
+    crawlerStats,
   }
 }
 
