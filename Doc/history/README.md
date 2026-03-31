@@ -1,29 +1,36 @@
 # Pulse Doc History
 
-Archived on: 2026-03-31
+Last updated: 2026-03-31
 
-## Archived Files
+## 1. 归档说明
+
+`Doc/history/` 保存两类文档：
+
+1. 历史阶段计划（已执行完成）；
+2. 已被新版主文档合并替代的旧结构文档。
+
+## 2. 历史阶段计划（此前归档）
 
 - `Crawler-improve.md`
-  - Historical crawler plan based on `all up to 50` strategy.
-  - Superseded by `Doc/strategy.md` (`Top 16`, strong relevance).
-
 - `frontline-citation-improvement.md`
-  - Phase plan for citation pairing issues.
-  - Kept as implementation history after phases were executed.
-
 - `moblie-design.md`
-  - Phase plan for mobile theater redesign and isolation.
-  - Completed roadmap retained for historical traceability.
-
 - `drama-improvement.md`
-  - Task breakdown derived from `pulse-drama-report-v2.md`.
-  - Moved after task phases were completed.
-
 - `pulse-drama-report-v2.md`
-  - Early V2 proposal document.
-  - Archived after implementation and newer docs became primary references.
-
 - `reporter-style-improvement.md`
-  - Reporter-style writing improvement proposal.
-  - Archived as historical design rationale.
+
+## 3. 本轮结构重构归档（2026-03-31）
+
+这些文档的有效内容已分别并入：
+
+- `Doc/design-principles.md`
+- `Doc/architecture-and-core-logic.md`
+- `Doc/operations-maintenance.md`
+- `Doc/testing-quality.md`
+
+归档文件：
+
+- `structure.md`
+- `backend-design.md`
+- `frontend-design.md`
+- `strategy.md`
+- `news-source-strategy.md`

@@ -165,6 +165,9 @@ curl -N http://localhost:8080/api/pulse/stream
 
 ## Documentation
 
-1. [Frontend design](Doc/frontend-design.md)
-2. [Backend design](Doc/backend-design.md)
-3. [System structure and dependencies](Doc/structure.md)
+1. [Documentation index](Doc/README.md)
+2. [Design principles](Doc/design-principles.md)
+3. [Architecture and core logic](Doc/architecture-and-core-logic.md)
+4. [UIUX guidelines](Doc/uiux-guidelines.md)
+5. [Operations and maintenance](Doc/operations-maintenance.md)
+6. [Testing and quality](Doc/testing-quality.md)
