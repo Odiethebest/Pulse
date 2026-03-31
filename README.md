@@ -1,92 +1,56 @@
 # Pulse
+> A multi-agent public opinion analysis system. Input any topic or event, and Pulse dispatches specialized AI agents to scrape, analyze, debate, and synthesize what the internet actually thinks.
 
-**One query. Two platforms. One clear take.**
-
-Pulse is a multi-agent system for fast-moving internet debates.  
-You type a topic once, and Pulse turns cross-platform noise into a readable report with evidence, confidence, and risk signals.
+When trending events break, most teams waste time doing manual tab switching across X and Reddit.
+Pulse is built to replace that workflow with one query and one defensible report.
 
 ## What You Get
 
 1. A frontline verdict you can read in seconds.
-2. Cross-platform sentiment and camp split from Reddit and X.
+2. Cross-platform sentiment and camp split from X and Reddit.
 3. Controversy lenses with source-grounded quote cards.
-4. Confidence, heat, polarization, and narrative flip risk.
-5. A visible execution trace so the process is not a black box.
+4. Confidence, heat, polarization, and flip risk signals.
+5. A live execution trace so the process is visible, not a black box.
+
+## Under the Hood in One Minute
+
+1. Query planner converts one topic into platform-specific retrieval strategy.
+2. Reddit and Twitter agents fetch raw public discussions in parallel.
+3. Analysis agents extract sentiment, stance, conflict, aspect, and flip-risk signals.
+4. Synthesis agent drafts the report and critic agent audits quality.
+5. If quality is weak, one guided rewrite runs before final output.
 
 ## Quick Start
 
-Requirements:
-
-1. Java 21
-2. Node.js 22.12 or newer
-3. OpenAI API key
-4. Tavily API key
-
-Setup:
+Local development:
 
 ```bash
 cd backend
 cp .env.example .env
-cd ../frontend
-npm install
-```
-
-Run in two terminals:
-
-Terminal A
-
-```bash
-cd backend
 ./mvnw spring-boot:run
 ```
 
-Terminal B
+In another terminal:
 
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-Local endpoints:
-
-1. Frontend: `http://localhost:5173`
-2. Backend: `http://localhost:8080`
-
-## Container Deploy
-
-Build image:
+Container build:
 
 ```bash
 docker build -t pulse:latest .
 ```
 
-Run container:
+## Documentation
 
-```bash
-docker run --rm -p 8080:8080 \
-  -e OPENAI_API_KEY=your_openai_key \
-  -e TAVILY_API_KEY=your_tavily_key \
-  pulse:latest
-```
+Product docs:
 
-## API
-
-1. `POST /api/pulse/analyze`
-2. `GET /api/pulse/stream`
-3. `GET /api/actuator/health`
-
-Compatibility routes remain available:
-
-1. `POST /pulse/analyze`
-2. `GET /pulse/stream`
-
-## Documentation Map
-
-Product-facing docs:
-
-1. [Inspiration story](Doc/inspiration.md)
-2. [UIUX design narrative](Doc/UIUX-design.md)
-3. [Agent system design narrative](Doc/agent-design.md)
+1. [Inspiration](Doc/inspiration.md)
+2. [UIUX design](Doc/UIUX-design.md)
+3. [Agent system design](Doc/agent-design.md)
 
 Developer docs:
 
@@ -100,6 +64,8 @@ Developer docs:
 
 ## Built By
 
-Built by **Odie Yang**.  
-Want to see it in action right now? Try the live demo at **[pulse.odieyang.com](https://pulse.odieyang.com)**.  
-For more projects and updates, check out **[odieyang.com](https://odieyang.com)**.
+By **Odie Yang**.
+
+Live demo: **[pulse.odieyang.com](https://pulse.odieyang.com)**
+
+More work: **[odieyang.com](https://odieyang.com)**
