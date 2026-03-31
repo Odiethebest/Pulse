@@ -105,10 +105,8 @@ export default function App() {
   }, [quickTake, report])
   const controversyBoardData = useMemo(() => buildControversyBoardData(report), [report])
   const citationSources = useMemo(() => {
-    const mappedQuotes = Array.isArray(controversyBoardData?.quotes)
-      ? controversyBoardData.quotes.filter((quote) => quote?.text)
-      : []
-    if (mappedQuotes.length > 0) return mappedQuotes
+    const canonical = Array.isArray(report?.citationSources) ? report.citationSources : []
+    if (canonical.length > 0) return canonical
 
     const reddit = (report?.redditSentiment?.representativeQuotes ?? []).map((quote) => ({
       ...quote,
@@ -118,8 +116,8 @@ export default function App() {
       ...quote,
       platform: quote?.platform || 'Twitter',
     }))
-    return [...reddit, ...twitter].filter((quote) => quote?.text)
-  }, [report, controversyBoardData])
+    return [...reddit, ...twitter]
+  }, [report])
   const primaryBiasConcern = report?.critique?.biasConcerns?.[0] ?? null
   const primaryEvidenceGap = report?.critique?.evidenceGaps?.[0] ?? null
   const revealProps = {

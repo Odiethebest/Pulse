@@ -21,6 +21,13 @@ function normalizePlatformLabel(platform) {
   return platform || 'Unknown'
 }
 
+function normalizeCitationUrl(url) {
+  return String(url ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function normalizeCrawledPost(post) {
   const evidenceScore = Number(post?.evidenceScore)
   const recencyScore = Number(post?.recencyScore)
@@ -147,6 +154,36 @@ function normalizeClaimEvidenceMap(rawMap, quickTake, redditSentiment, twitterSe
   }))
 }
 
+export function buildCanonicalCitationSources(redditSentiment, twitterSentiment) {
+  const merged = [
+    ...asArray(redditSentiment?.representativeQuotes).map((quote) => ({ ...quote, platform: 'Reddit' })),
+    ...asArray(twitterSentiment?.representativeQuotes).map((quote) => ({ ...quote, platform: 'Twitter' })),
+  ]
+
+  const seenUrls = new Set()
+  const sources = []
+  for (const quote of merged) {
+    const url = String(quote?.url ?? '').trim()
+    if (!url) continue
+
+    const dedupKey = normalizeCitationUrl(url)
+    if (!dedupKey || seenUrls.has(dedupKey)) continue
+    seenUrls.add(dedupKey)
+
+    sources.push({
+      platform: normalizePlatformLabel(quote?.platform),
+      sentiment: String(quote?.sentiment ?? 'neutral').toLowerCase(),
+      camp: quote?.camp || 'neutral',
+      evidenceWeight: typeof quote?.evidenceWeight === 'number'
+        ? Math.max(0, Math.min(1, quote.evidenceWeight))
+        : 0.5,
+      text: typeof quote?.text === 'string' ? quote.text : '',
+      url,
+    })
+  }
+  return sources
+}
+
 function normalizeReport(payload) {
   const redditSentiment = normalizeSentiment(payload?.redditSentiment, 'Reddit')
   const twitterSentiment = normalizeSentiment(payload?.twitterSentiment, 'Twitter')
@@ -236,6 +273,7 @@ function normalizeReport(payload) {
     redditSentiment,
     twitterSentiment
   )
+  const citationSources = buildCanonicalCitationSources(redditSentiment, twitterSentiment)
 
   return {
     topic: payload?.topic || '',
@@ -259,6 +297,7 @@ function normalizeReport(payload) {
     flipSignals,
     revisionDelta,
     claimEvidenceMap,
+    citationSources,
     allPosts,
     topicBuckets,
     crawlerStats,
