@@ -92,8 +92,8 @@ public class PulseOrchestrator {
     @Value("${debate.quality.min-claim-coverage:60}")
     private int minClaimEvidenceCoverage;
 
-    @Value("${crawler.target-total:50}")
-    private int crawlerTargetTotal;
+    @Value("${crawler.target-total:16}")
+    private int crawlerTargetTotal = 16;
 
     @Value("${crawler.boundary.max-posts:24}")
     private int crawlerBoundaryMaxPosts = 24;
@@ -113,17 +113,20 @@ public class PulseOrchestrator {
     @Value("${crawler.relevance.min-sample:12}")
     private int crawlerRelevanceMinSample = 12;
 
-    @Value("${crawler.relevance.min-score:2}")
-    private int crawlerRelevanceMinScore = 2;
+    @Value("${crawler.relevance.min-score:4}")
+    private int crawlerRelevanceMinScore = 4;
 
-    @Value("${crawler.relevance.min-retain-count:6}")
-    private int crawlerRelevanceMinRetainCount = 6;
+    @Value("${crawler.relevance.min-retain-count:2}")
+    private int crawlerRelevanceMinRetainCount = 2;
 
-    @Value("${crawler.relevance.min-retain-ratio:0.35}")
-    private double crawlerRelevanceMinRetainRatio = 0.35;
+    @Value("${crawler.relevance.min-retain-ratio:0.15}")
+    private double crawlerRelevanceMinRetainRatio = 0.15;
 
-    @Value("${crawler.relevance.max-hashtags:4}")
-    private int crawlerRelevanceMaxHashtags = 4;
+    @Value("${crawler.relevance.max-hashtags:2}")
+    private int crawlerRelevanceMaxHashtags = 2;
+
+    @Value("${crawler.relevance.platform-cap:8}")
+    private int crawlerRelevancePlatformCap = 8;
 
     public PulseReport analyze(String topic) {
         return analyze(topic, null, "en-US");
@@ -1466,6 +1469,7 @@ public class PulseOrchestrator {
         String normalizedTopic = normalizeForMatch(topic);
         List<ScoredRawPost> scoredPosts = new ArrayList<>();
         int hardRejected = 0;
+        int strictRejected = 0;
         for (RawPost post : originalPosts) {
             if (post == null) {
                 continue;
@@ -1474,18 +1478,35 @@ public class PulseOrchestrator {
                 hardRejected += 1;
                 continue;
             }
+            String combined = normalizeForMatch((post.title() == null ? "" : post.title())
+                    + " "
+                    + (post.snippet() == null ? "" : post.snippet()));
+            int anchorHits = anchorHitCount(combined, anchors);
+            boolean topicHit = hasTopicHit(combined, normalizedTopic);
+            if (!topicHit && anchorHits < 2) {
+                strictRejected += 1;
+                continue;
+            }
             int score = postRelevanceScore(post, normalizedTopic, anchors);
             scoredPosts.add(new ScoredRawPost(post, score));
         }
 
         if (scoredPosts.isEmpty()) {
-            return rawPosts;
+            String platform = rawPosts.platform() == null ? "unknown" : rawPosts.platform();
+            log.info("Relevance filter dropped all {} posts after strict gate (hardRejected={}, strictRejected={}, anchors={})",
+                    platform,
+                    hardRejected,
+                    strictRejected,
+                    anchors.size());
+            return emptyRawPosts(rawPosts.platform());
         }
 
+        List<ScoredRawPost> rankedPosts = scoredPosts.stream()
+                .sorted(Comparator.comparingInt(ScoredRawPost::score).reversed())
+                .toList();
         int minScore = Math.max(0, crawlerRelevanceMinScore);
-        List<RawPost> thresholdKept = scoredPosts.stream()
+        List<ScoredRawPost> thresholdKept = rankedPosts.stream()
                 .filter(item -> item.score() >= minScore)
-                .map(ScoredRawPost::post)
                 .toList();
 
         int minRetainCount = Math.max(1, crawlerRelevanceMinRetainCount);
@@ -1494,30 +1515,36 @@ public class PulseOrchestrator {
                 originalPosts.size(),
                 Math.max(minRetainCount, ratioRetainCount)
         );
-        requiredRetainCount = Math.min(requiredRetainCount, scoredPosts.size());
+        requiredRetainCount = Math.min(requiredRetainCount, rankedPosts.size());
 
-        List<RawPost> finalPosts;
+        List<ScoredRawPost> finalScored;
         if (thresholdKept.size() >= requiredRetainCount) {
-            finalPosts = thresholdKept;
+            finalScored = thresholdKept;
         } else {
-            finalPosts = scoredPosts.stream()
-                    .sorted(Comparator.comparingInt(ScoredRawPost::score).reversed())
+            finalScored = rankedPosts.stream()
                     .limit(requiredRetainCount)
-                    .map(ScoredRawPost::post)
                     .toList();
         }
 
-        if (finalPosts.size() >= originalPosts.size()) {
-            return rawPosts;
+        int platformCap = Math.max(1, crawlerRelevancePlatformCap);
+        if (finalScored.size() > platformCap) {
+            finalScored = finalScored.subList(0, platformCap);
         }
+
+        List<RawPost> finalPosts = finalScored.stream()
+                .map(ScoredRawPost::post)
+                .toList();
 
         int filteredCount = originalPosts.size() - finalPosts.size();
         String platform = rawPosts.platform() == null ? "unknown" : rawPosts.platform();
-        log.info("Relevance filter tightened {} posts: kept {}/{} (hardRejected={}, anchors={})",
+        log.info("Relevance filter tightened {} posts: kept {}/{} (hardRejected={}, strictRejected={}, minScore={}, platformCap={}, anchors={})",
                 platform,
                 finalPosts.size(),
                 originalPosts.size(),
                 hardRejected,
+                strictRejected,
+                minScore,
+                platformCap,
                 anchors.size());
         return new RawPosts(rawPosts.platform(), finalPosts);
     }
@@ -1572,25 +1599,15 @@ public class PulseOrchestrator {
         }
 
         int score = 0;
-        int uniqueAnchorHits = 0;
+        int uniqueAnchorHits = anchorHitCount(combined, anchors);
         for (String anchor : anchors) {
-            if (anchor == null || anchor.isBlank()) {
+            if (anchor == null || anchor.isBlank() || !combined.contains(anchor)) {
                 continue;
             }
-            if (!combined.contains(anchor)) {
-                continue;
-            }
-            uniqueAnchorHits += 1;
-            if (containsCjk(anchor)) {
-                score += 2;
-            } else if (anchor.length() >= 8) {
-                score += 2;
-            } else {
-                score += 1;
-            }
+            score += (containsCjk(anchor) || anchor.length() >= 8) ? 2 : 1;
         }
 
-        if (!normalizedTopic.isBlank() && combined.contains(normalizedTopic)) {
+        if (hasTopicHit(combined, normalizedTopic)) {
             score += 4;
         }
         if (uniqueAnchorHits >= 2) {
@@ -1610,6 +1627,30 @@ public class PulseOrchestrator {
         return score;
     }
 
+    private int anchorHitCount(String combined, List<String> anchors) {
+        if (combined == null || combined.isBlank() || anchors == null || anchors.isEmpty()) {
+            return 0;
+        }
+        int hits = 0;
+        for (String anchor : anchors) {
+            if (anchor == null || anchor.isBlank()) {
+                continue;
+            }
+            if (combined.contains(anchor)) {
+                hits += 1;
+            }
+        }
+        return hits;
+    }
+
+    private boolean hasTopicHit(String combined, String normalizedTopic) {
+        return combined != null
+                && !combined.isBlank()
+                && normalizedTopic != null
+                && !normalizedTopic.isBlank()
+                && combined.contains(normalizedTopic);
+    }
+
     private boolean isHardIrrelevantPost(RawPost post, String normalizedTopic, List<String> anchors) {
         String combined = normalizeForMatch((post.title() == null ? "" : post.title())
                 + " "
@@ -1622,24 +1663,14 @@ public class PulseOrchestrator {
             return true;
         }
 
-        int anchorHits = 0;
-        for (String anchor : anchors) {
-            if (anchor == null || anchor.isBlank()) {
-                continue;
-            }
-            if (combined.contains(anchor)) {
-                anchorHits += 1;
-                if (anchorHits >= 1) {
-                    break;
-                }
-            }
-        }
-
+        int anchorHits = anchorHitCount(combined, anchors);
         int hashtags = hashtagCount(post);
+        boolean lowSignal = looksLikeLowSignalNoise(combined);
         boolean hashtagSpam = hashtags > crawlerRelevanceMaxHashtags && anchorHits == 0;
-        boolean lowSignal = looksLikeLowSignalNoise(combined) && anchorHits == 0;
+        boolean lowSignalHashtagSpam = lowSignal && hashtags > crawlerRelevanceMaxHashtags;
+        boolean lowSignalWithoutEvidence = lowSignal && anchorHits == 0;
         boolean topicMiss = !normalizedTopic.isBlank() && !combined.contains(normalizedTopic) && anchorHits == 0;
-        return hashtagSpam || lowSignal || topicMiss;
+        return hashtagSpam || lowSignalHashtagSpam || lowSignalWithoutEvidence || topicMiss;
     }
 
     private boolean looksLikeLowSignalNoise(String text) {

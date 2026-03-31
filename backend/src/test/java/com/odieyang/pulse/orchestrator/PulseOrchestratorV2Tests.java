@@ -471,6 +471,43 @@ class PulseOrchestratorV2Tests {
                 "Expected topic-relevant friendship posts to remain");
     }
 
+    @Test
+    void analyzeShouldApplyStrictGateAndPlatformCapForHighRelevanceOnly() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new RelevanceStressRedditAgent(),
+                new RelevanceStressTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "crawlerTargetTotal", 32);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinSample", 1);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinScore", 2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainCount", 1);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainRatio", 0.10);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevancePlatformCap", 8);
+
+        PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+
+        assertNotNull(report.allPosts());
+        assertTrue(report.allPosts().size() <= 16, "Platform cap should constrain merged posts to 16 or fewer");
+        assertNotNull(report.crawlerStats());
+        assertTrue(report.crawlerStats().redditCount() <= 8, "Reddit posts should be capped per platform");
+        assertTrue(report.crawlerStats().twitterCount() <= 8, "Twitter posts should be capped per platform");
+        assertTrue(report.allPosts().stream().noneMatch(post ->
+                        String.valueOf(post.url()).contains("/weak-")),
+                "Strict gate should remove weak single-anchor posts");
+        assertTrue(report.allPosts().stream().anyMatch(post ->
+                        String.valueOf(post.url()).contains("/strong-")),
+                "Strongly relevant posts should remain after tightening");
+    }
+
     private boolean containsCitationPair(String line, int left, int right) {
         if (line == null || line.isBlank()) {
             return false;
@@ -663,6 +700,64 @@ class PulseOrchestratorV2Tests {
                     new RawPost("Spam", "Buy tickets now. Link in bio for exclusive drops.", "https://x.com/noisy/5"),
                     new RawPost("Noise", "General weekend mood post unrelated to the topic.", "https://x.com/noisy/6")
             ));
+        }
+    }
+
+    private static class RelevanceStressRedditAgent extends RedditAgent {
+        RelevanceStressRedditAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public RawPosts fetch(List<String> queries) {
+            List<RawPost> posts = new ArrayList<>();
+            for (int i = 1; i <= 10; i++) {
+                posts.add(new RawPost(
+                        "Taylor Swift and Ed Sheeran friendship debate thread " + i,
+                        "Fans debate Taylor Swift and Ed Sheeran friendship intensity " + i,
+                        "https://reddit.com/r/strong-" + i
+                ));
+            }
+            posts.add(new RawPost(
+                    "Friendship update",
+                    "General fandom chatter without concrete context.",
+                    "https://reddit.com/r/weak-1"
+            ));
+            posts.add(new RawPost(
+                    "Taylor headline",
+                    "General pop roundup without specific debate context.",
+                    "https://reddit.com/r/weak-2"
+            ));
+            return new RawPosts("reddit", posts);
+        }
+    }
+
+    private static class RelevanceStressTwitterAgent extends TwitterAgent {
+        RelevanceStressTwitterAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public RawPosts fetch(List<String> queries) {
+            List<RawPost> posts = new ArrayList<>();
+            for (int i = 1; i <= 10; i++) {
+                posts.add(new RawPost(
+                        "Taylor Swift and Ed Sheeran friendship debate pulse " + i,
+                        "X users discuss Taylor Swift and Ed Sheeran friendship debate signals " + i,
+                        "https://x.com/strong-" + i
+                ));
+            }
+            posts.add(new RawPost(
+                    "Friendship mood",
+                    "General mood post with no concrete debate detail.",
+                    "https://x.com/weak-1"
+            ));
+            posts.add(new RawPost(
+                    "Sheeran mention",
+                    "Short mention without broader topic context.",
+                    "https://x.com/weak-2"
+            ));
+            return new RawPosts("twitter", posts);
         }
     }
 
