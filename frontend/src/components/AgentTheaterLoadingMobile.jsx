@@ -145,6 +145,7 @@ export default function AgentTheaterLoadingMobile({
 }) {
   const [activeTab, setActiveTab] = useState('console')
   const [isAtBottom, setIsAtBottom] = useState(true)
+  const [showFullExecution, setShowFullExecution] = useState(false)
   const [consoleTopOffset, setConsoleTopOffset] = useState(0)
   const logRef = useRef(null)
   const shellRef = useRef(null)
@@ -167,6 +168,9 @@ export default function AgentTheaterLoadingMobile({
   const completedCount = nodes.filter((node) => node.state === 'completed').length
   const runningCount = nodes.filter((node) => node.state === 'running').length
   const failedCount = nodes.filter((node) => node.state === 'failed').length
+  const runningNodes = nodes.filter((node) => node.state === 'running')
+  const failedNodes = nodes.filter((node) => node.state === 'failed')
+  const latestEvent = safeEvents[safeEvents.length - 1] || null
   const allGreen = runStatus === 'complete' && failedCount === 0 && completedCount === nodes.length
 
   const updateBottomState = () => {
@@ -192,6 +196,12 @@ export default function AgentTheaterLoadingMobile({
   useEffect(() => {
     if (!logRef.current || activeTab !== 'console') return
     updateBottomState()
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'execution') {
+      setShowFullExecution(false)
+    }
   }, [activeTab])
 
   useEffect(() => {
@@ -306,8 +316,44 @@ export default function AgentTheaterLoadingMobile({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.16 }}
+                className="theater-mobile-execution"
               >
-                <ExecutionTree nodes={nodes} />
+                <section
+                  className="theater-mobile-execution-summary"
+                  data-testid="theater-mobile-execution-summary"
+                >
+                  <p className="theater-mobile-execution-kicker">Execution Summary</p>
+                  <p className="theater-mobile-execution-progress">
+                    <span className="theater-mobile-execution-pill">
+                      {runStatus === 'complete' ? 'Done' : runStatus === 'error' ? 'Failed' : 'Running'}
+                    </span>
+                    <span>{completedCount}/{nodes.length} steps completed</span>
+                  </p>
+                  <p className="theater-mobile-execution-latest">
+                    Latest: {latestEvent?.agentName || 'PulseCore'} · {latestEvent?.summary || 'Waiting for first event...'}
+                  </p>
+                  {runningNodes.length > 0 && (
+                    <p className="theater-mobile-execution-extra">
+                      In Progress: {runningNodes.map((node) => node.label).join(' · ')}
+                    </p>
+                  )}
+                  {failedNodes.length > 0 && (
+                    <p className="theater-mobile-execution-extra theater-mobile-execution-extra--failed">
+                      Failed: {failedNodes.map((node) => node.label).join(' · ')}
+                    </p>
+                  )}
+                </section>
+
+                <button
+                  type="button"
+                  className="theater-mobile-tree-toggle"
+                  onClick={() => setShowFullExecution((prev) => !prev)}
+                  aria-expanded={showFullExecution}
+                >
+                  {showFullExecution ? 'Hide full chain' : 'Show full chain'}
+                </button>
+
+                {showFullExecution && <ExecutionTree nodes={nodes} />}
               </motion.div>
             )}
           </AnimatePresence>

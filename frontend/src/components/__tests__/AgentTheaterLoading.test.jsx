@@ -46,7 +46,7 @@ describe('AgentTheaterLoading isolation', () => {
     expect(mobileNamespaceNodes.length).toBe(0)
   })
 
-  it('uses mobile tabbed layout and keeps execution panel separate from console panel', async () => {
+  it('uses mobile tabbed layout with execution summary and expandable full chain', async () => {
     const view = render(
       <AgentTheaterLoadingMobile
         runStatus="loading"
@@ -63,9 +63,16 @@ describe('AgentTheaterLoading isolation', () => {
     fireEvent.click(view.getByRole('tab', { name: 'Execution' }))
     expect(view.getByRole('tab', { name: 'Execution' })).toHaveAttribute('aria-selected', 'true')
     await waitFor(() => {
+      expect(view.getByTestId('theater-mobile-execution-summary')).toBeInTheDocument()
+    })
+    expect(view.queryByTestId('theater-mobile-tree')).not.toBeInTheDocument()
+
+    fireEvent.click(view.getByRole('button', { name: /show full chain/i }))
+    await waitFor(() => {
       expect(view.getByTestId('theater-mobile-tree')).toBeInTheDocument()
     })
-    expect(view.queryByTestId('theater-mobile-console')).not.toBeInTheDocument()
+    fireEvent.click(view.getByRole('button', { name: /hide full chain/i }))
+    expect(view.queryByTestId('theater-mobile-tree')).not.toBeInTheDocument()
   })
 
   it('auto-scrolls only when console is at bottom on mobile', async () => {
