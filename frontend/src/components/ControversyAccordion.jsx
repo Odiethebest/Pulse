@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 const INITIAL_VISIBLE_COUNT = 6
 const LOAD_STEP = 6
-const HIGHLIGHT_SCORE_THRESHOLD = 85
+const HIGHLIGHT_SCORE_THRESHOLD = 70
 const GAP_PATTERN = [2, 3]
 
 function heatTone(heat) {

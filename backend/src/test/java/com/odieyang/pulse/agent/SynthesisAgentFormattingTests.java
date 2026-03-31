@@ -223,4 +223,72 @@ class SynthesisAgentFormattingTests {
         assertFalse(prompt.contains("Frontline Reddit ids: []"));
         assertFalse(prompt.contains("Frontline Twitter/X ids: []"));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void collectCriticalViolationsShouldFlagFrontlineFixedOffsetPairing() {
+        SynthesisAgent agent = new SynthesisAgent(null, null);
+        String invalidOutput = """
+                ## Lead
+                The audience remains split over the core issue. [1] [4]
+
+                ## Frontline Clash
+                While Reddit dissects long-form evidence, Twitter amplifies the headline frame. [1] [5]
+                In contrast, Reddit users challenge the framing details and X users keep the same angle trending. [2] [6]
+
+                ## Top Controversies
+                Friction stays centered on trust and narrative framing. [3]
+
+                ## Flip Risk Watch
+                The consensus can still shift if fresh primary evidence appears. [4]
+
+                ## Why It Matters
+                This argument affects how neutral observers interpret new claims. [6]
+
+                ## Reporter Note
+                Platform dynamics remain asymmetric across evidence depth and velocity. [2]
+                """;
+
+        List<String> violations = (List<String>) ReflectionTestUtils.invokeMethod(
+                agent,
+                "collectCriticalViolations",
+                invalidOutput
+        );
+
+        assertTrue(violations.stream().anyMatch(v -> v.toLowerCase().contains("fixed-offset")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void collectCriticalViolationsShouldAllowNonMechanicalFrontlinePairing() {
+        SynthesisAgent agent = new SynthesisAgent(null, null);
+        String validOutput = """
+                ## Lead
+                The discussion has a visible split between endorsement and skepticism. [2] [7]
+
+                ## Frontline Clash
+                While Reddit scrutinizes process details, Twitter emphasizes symbolic moments. [2] [9]
+                Despite that contrast, both platforms converge on evidence quality as the deciding factor. [4] [6]
+
+                ## Top Controversies
+                Debate centers on credibility and intent. [8]
+
+                ## Flip Risk Watch
+                The narrative is fragile and could move with new disclosures. [3]
+
+                ## Why It Matters
+                This shapes media framing and fan expectations in the next cycle. [5]
+
+                ## Reporter Note
+                Cross-platform framing is still uneven but not fully disconnected. [10]
+                """;
+
+        List<String> violations = (List<String>) ReflectionTestUtils.invokeMethod(
+                agent,
+                "collectCriticalViolations",
+                validOutput
+        );
+
+        assertFalse(violations.stream().anyMatch(v -> v.toLowerCase().contains("fixed-offset")));
+    }
 }

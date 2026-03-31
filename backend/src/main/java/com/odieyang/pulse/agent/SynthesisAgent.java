@@ -126,6 +126,7 @@ public class SynthesisAgent {
               Flip Risk < 40: relatively stable narrative
             - Use contrastive syntax in Frontline Clash. Prefer forms like "While ... , ...", "Despite ... , ...", or "In contrast, ...".
             - Describe platform mismatch with action verbs, e.g., "Reddit dissects/scrutinizes ..." versus "Twitter amplifies/fixates on ...".
+            - In Frontline Clash, avoid fixed-offset citation pairing patterns like [1][5] then [2][6].
             - Do not use vague filler such as "overall", "many people believe", or "it sparked broad discussion" without specifics.
             - Use only supplied source ids and do not invent ids.
             - Never output raw data blocks or labels such as "EVIDENCE BANK", "REDDIT POSTS", or "TWITTER/X POSTS".
@@ -170,6 +171,7 @@ public class SynthesisAgent {
             - citation quota: use at least 5 distinct source ids when 5 or more are provided
             - prohibit laziness: do not repeatedly cite only [1] and [2]
             - follow section candidate pools: prioritize Lead ids in Lead and Frontline ids in Frontline Clash
+            - avoid fixed-offset pairing in Frontline Clash, for example [1][5] then [2][6]
             """;
 
     private final ChatClient chatClient;
@@ -401,6 +403,9 @@ public class SynthesisAgent {
         if (LAZY_CITATION_LOOP_PATTERN.matcher(content).matches()) {
             violations.add("Lazy repeated [1] [2] citation loop was found.");
         }
+        if (hasFrontlineFixedOffsetCitationPairing(content)) {
+            violations.add("Frontline fixed-offset citation pairing pattern was found.");
+        }
         validateCitationDiversity(content, availableSourceCount, violations);
         String lower = content.toLowerCase();
         for (String marker : RAW_DUMP_MARKERS) {
@@ -435,6 +440,7 @@ public class SynthesisAgent {
                 8. Use at least 5 distinct citation ids when at least 5 sources are available.
                 9. Do not repeat only [1] [2] across sections.
                 10. Follow section candidate pools: prioritize Lead preferred ids in Lead and Frontline preferred ids in Frontline Clash.
+                11. In Frontline Clash, avoid fixed-offset citation pairing like [1][5] then [2][6].
 
                 === PREVIOUS INVALID OUTPUT (DO NOT COPY) ===
                 %s
@@ -665,6 +671,108 @@ public class SynthesisAgent {
             return "[]";
         }
         return ids.toString();
+    }
+
+    private boolean hasFrontlineFixedOffsetCitationPairing(String content) {
+        String frontline = extractSectionContent(content, "Frontline Clash");
+        if (frontline.isBlank()) {
+            return false;
+        }
+
+        List<CitationPair> pairs = extractFrontlineCitationPairs(frontline);
+        if (pairs.size() < 2) {
+            return false;
+        }
+
+        int streak = 1;
+        for (int i = 1; i < pairs.size(); i++) {
+            CitationPair previous = pairs.get(i - 1);
+            CitationPair current = pairs.get(i);
+            boolean sameOffset = previous.offset() == current.offset() && current.offset() >= 2;
+            boolean nearbyProgression = Math.abs(current.lowerId() - previous.lowerId()) <= 2
+                    && Math.abs(current.upperId() - previous.upperId()) <= 2;
+            boolean notSamePair = current.lowerId() != previous.lowerId() || current.upperId() != previous.upperId();
+            if (sameOffset && nearbyProgression && notSamePair) {
+                streak += 1;
+                if (streak >= 2) {
+                    return true;
+                }
+            } else {
+                streak = 1;
+            }
+        }
+        return false;
+    }
+
+    private String extractSectionContent(String markdown, String sectionTitle) {
+        if (markdown == null || markdown.isBlank() || sectionTitle == null || sectionTitle.isBlank()) {
+            return "";
+        }
+        String sectionHeader = "## " + sectionTitle;
+        int start = markdown.indexOf(sectionHeader);
+        if (start < 0) {
+            return "";
+        }
+        int bodyStart = markdown.indexOf('\n', start);
+        if (bodyStart < 0) {
+            return "";
+        }
+        int nextHeader = markdown.indexOf("\n## ", bodyStart + 1);
+        int end = nextHeader >= 0 ? nextHeader : markdown.length();
+        return markdown.substring(bodyStart + 1, end).trim();
+    }
+
+    private List<CitationPair> extractFrontlineCitationPairs(String frontlineContent) {
+        List<CitationPair> pairs = new ArrayList<>();
+        for (String sentence : splitSentences(frontlineContent)) {
+            List<Integer> ids = extractCitationIds(sentence);
+            LinkedHashSet<Integer> uniqueIds = new LinkedHashSet<>(ids);
+            if (uniqueIds.size() != 2) {
+                continue;
+            }
+            List<Integer> pair = new ArrayList<>(uniqueIds);
+            int first = pair.get(0);
+            int second = pair.get(1);
+            int lower = Math.min(first, second);
+            int upper = Math.max(first, second);
+            pairs.add(new CitationPair(lower, upper));
+        }
+        return pairs;
+    }
+
+    private List<String> splitSentences(String content) {
+        if (content == null || content.isBlank()) {
+            return List.of();
+        }
+        String normalized = content.replace('\r', '\n');
+        String[] raw = normalized.split("(?<=[.!?。！？])\\s+|\\n+");
+        List<String> sentences = new ArrayList<>();
+        for (String value : raw) {
+            if (value == null) {
+                continue;
+            }
+            String trimmed = value.trim();
+            if (!trimmed.isBlank()) {
+                sentences.add(trimmed);
+            }
+        }
+        return sentences;
+    }
+
+    private List<Integer> extractCitationIds(String content) {
+        if (content == null || content.isBlank()) {
+            return List.of();
+        }
+        List<Integer> ids = new ArrayList<>();
+        Matcher matcher = CITATION_PATTERN.matcher(content);
+        while (matcher.find()) {
+            try {
+                ids.add(Integer.parseInt(matcher.group(1)));
+            } catch (NumberFormatException ignored) {
+                // ignore malformed ids, regex already constrains numeric shape
+            }
+        }
+        return ids;
     }
 
     private int countAvailableSources(SentimentResult redditSentiment, SentimentResult twitterSentiment) {
@@ -1143,4 +1251,13 @@ public class SynthesisAgent {
             List<Integer> leadSourceIds,
             List<Integer> frontlineSourceIds
     ) {}
+
+    private record CitationPair(
+            int lowerId,
+            int upperId
+    ) {
+        private int offset() {
+            return upperId - lowerId;
+        }
+    }
 }
