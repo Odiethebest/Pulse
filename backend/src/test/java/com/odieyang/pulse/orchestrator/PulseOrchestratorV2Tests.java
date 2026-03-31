@@ -293,6 +293,79 @@ class PulseOrchestratorV2Tests {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void mechanicalPairingGuardShouldRewriteSecondClaimWhenOffsetPatternDetected() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new LegacyPatternSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+
+        SentimentResult redditSentiment = new LegacyPatternSentimentAgent().analyze(new RawPosts("reddit", List.of()));
+        SentimentResult twitterSentiment = new LegacyPatternSentimentAgent().analyze(new RawPosts("twitter", List.of()));
+        List<Object> evidenceQuotes = (List<Object>) ReflectionTestUtils.invokeMethod(
+                orchestrator,
+                "collectEvidenceQuotes",
+                redditSentiment,
+                twitterSentiment
+        );
+
+        List<ClaimEvidenceLink> initialClaimMap = (List<ClaimEvidenceLink>) ReflectionTestUtils.invokeMethod(
+                orchestrator,
+                "buildClaimEvidenceMap",
+                "Taylor Swift and Ed Sheeran friendship",
+                new CampDistribution(0.52, 0.36, 0.12),
+                List.of(new ControversyTopic("pricing flashpoint", 72, "Price fairness fight")),
+                72,
+                58,
+                false,
+                "Reddit dissects details while X amplifies headline loops.",
+                evidenceQuotes
+        );
+
+        List<String> evidenceUrls = List.of(
+                "https://reddit.com/r/1",
+                "https://reddit.com/r/2",
+                "https://reddit.com/r/3",
+                "https://x.com/1",
+                "https://x.com/2",
+                "https://x.com/3"
+        );
+
+        List<Integer> firstPairBefore = citationPairFromUrls(initialClaimMap.get(0).evidenceUrls(), evidenceUrls);
+        List<Integer> secondPairBefore = citationPairFromUrls(initialClaimMap.get(1).evidenceUrls(), evidenceUrls);
+        assertTrue(isMechanicalOffsetPairing(firstPairBefore, secondPairBefore),
+                "Fixture should produce a mechanical offset pair before guard");
+
+        List<ClaimEvidenceLink> guardedClaimMap = (List<ClaimEvidenceLink>) ReflectionTestUtils.invokeMethod(
+                orchestrator,
+                "applyQuickTakeMechanicalPairingGuard",
+                initialClaimMap,
+                evidenceQuotes,
+                evidenceUrls
+        );
+
+        List<Integer> firstPairAfter = citationPairFromUrls(guardedClaimMap.get(0).evidenceUrls(), evidenceUrls);
+        List<Integer> secondPairAfter = citationPairFromUrls(guardedClaimMap.get(1).evidenceUrls(), evidenceUrls);
+
+        assertFalse(isMechanicalOffsetPairing(firstPairAfter, secondPairAfter),
+                "Expected guard to rewrite second claim away from fixed-offset pairing");
+        assertNotEquals(
+                new LinkedHashSet<>(initialClaimMap.get(1).evidenceUrls()),
+                new LinkedHashSet<>(guardedClaimMap.get(1).evidenceUrls()),
+                "Expected second claim evidence urls to change when guard triggers"
+        );
+    }
+
+    @Test
     void analyzeShouldEmitPhase3CrawlerSignalsAndRankedBucketPosts() {
         var orchestrator = buildOrchestrator(
                 new FixedQueryPlannerAgent(),
@@ -408,6 +481,28 @@ class PulseOrchestratorV2Tests {
         int lowerDelta = secondPair.get(0) - firstPair.get(0);
         int upperDelta = secondPair.get(1) - firstPair.get(1);
         return Math.abs(lowerDelta) <= 2 && Math.abs(upperDelta) <= 2 && (lowerDelta != 0 || upperDelta != 0);
+    }
+
+    private List<Integer> citationPairFromUrls(List<String> selectedUrls, List<String> allEvidenceUrls) {
+        if (selectedUrls == null || allEvidenceUrls == null) {
+            return List.of();
+        }
+        LinkedHashSet<Integer> ids = new LinkedHashSet<>();
+        for (String url : selectedUrls) {
+            int index = allEvidenceUrls.indexOf(url);
+            if (index >= 0) {
+                ids.add(index + 1);
+            }
+            if (ids.size() >= 2) {
+                break;
+            }
+        }
+        if (ids.size() < 2) {
+            return List.of();
+        }
+        List<Integer> pair = new ArrayList<>(ids);
+        pair.sort(Integer::compareTo);
+        return pair;
     }
 
     private PulseOrchestrator buildOrchestrator(
