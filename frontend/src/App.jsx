@@ -238,7 +238,7 @@ export default function App() {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="pulse-content flex flex-col gap-5 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-16 mt-8"
+          className="pulse-content flex flex-col gap-5 md:gap-8 w-full max-w-5xl mx-auto px-4 md:px-8 pb-32 md:pb-16 mt-8"
         >
 
           <div className="drama-module animate-fade-up bg-indigo-900/10 md:bg-indigo-500/5 border border-indigo-500/20 rounded-lg md:rounded-xl p-4 md:p-5 overflow-hidden" style={{ animationDelay: '20ms' }}>
@@ -328,13 +328,13 @@ export default function App() {
         <button
           type="button"
           onClick={cancelRun}
-          className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] sm:bottom-8 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-sm font-medium bg-rose-600/90 text-white hover:bg-rose-500 transition-colors shadow-2xl z-50"
+          className="fixed bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-sm font-medium bg-rose-600/90 text-white hover:bg-rose-500 transition-colors shadow-2xl z-50"
         >
           Stop capture (Esc)
         </button>
       ) : shouldRenderDashboard && (
         <div
-          className="fixed bottom-32 sm:bottom-8 pulse-frosted-chip left-1/2 -translate-x-1/2 w-[calc(100vw-1.5rem)] sm:w-auto max-w-[24rem] sm:max-w-none flex items-center justify-center gap-2 sm:gap-3 p-1.5 rounded-full z-50"
+          className="fixed bottom-6 sm:bottom-8 pulse-frosted-chip left-1/2 -translate-x-1/2 w-[calc(100vw-1.5rem)] sm:w-auto max-w-[24rem] sm:max-w-none flex items-center justify-center gap-2 sm:gap-3 p-1.5 rounded-full z-50"
         >
           <button
             type="button"
