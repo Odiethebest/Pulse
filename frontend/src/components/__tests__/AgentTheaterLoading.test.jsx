@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AgentTheaterLoadingDesktop from '../AgentTheaterLoadingDesktop'
 import AgentTheaterLoadingMobile from '../AgentTheaterLoadingMobile'
@@ -47,10 +47,41 @@ describe('AgentTheaterLoading isolation', () => {
   })
 
   it('uses mobile tabbed layout with execution summary and expandable full chain', async () => {
+    const phase3Events = [
+      {
+        status: 'COMPLETED',
+        agentName: 'QueryPlanner',
+        summary: 'planned query expansion',
+        timestamp: '2026-03-30T20:14:00Z',
+        durationMs: 40,
+      },
+      {
+        status: 'COMPLETED',
+        agentName: 'RedditCollector',
+        summary: 'collected reddit posts',
+        timestamp: '2026-03-30T20:14:02Z',
+        durationMs: 60,
+      },
+      {
+        status: 'COMPLETED',
+        agentName: 'TwitterCollector',
+        summary: 'collected twitter posts',
+        timestamp: '2026-03-30T20:14:04Z',
+        durationMs: 70,
+      },
+      {
+        status: 'STARTED',
+        agentName: 'SentimentAnalyzer',
+        summary: 'running sentiment',
+        timestamp: '2026-03-30T20:14:05Z',
+        durationMs: 0,
+      },
+    ]
+
     const view = render(
       <AgentTheaterLoadingMobile
         runStatus="loading"
-        agentEvents={[eventLine(1), eventLine(2, 'COMPLETED')]}
+        agentEvents={phase3Events}
         liveText=""
       />
     )
@@ -65,14 +96,21 @@ describe('AgentTheaterLoading isolation', () => {
     await waitFor(() => {
       expect(view.getByTestId('theater-mobile-execution-summary')).toBeInTheDocument()
     })
-    expect(view.queryByTestId('theater-mobile-tree')).not.toBeInTheDocument()
+    const focusedTree = view.getByTestId('theater-mobile-tree-focused')
+    expect(within(focusedTree).getByText('Sentiment Analyzer')).toBeInTheDocument()
+    expect(within(focusedTree).getByText('Twitter Collector')).toBeInTheDocument()
+    expect(within(focusedTree).getByText('Reddit Collector')).toBeInTheDocument()
+    expect(within(focusedTree).queryByText('Query Planner')).not.toBeInTheDocument()
+    expect(view.queryByTestId('theater-mobile-tree-all')).not.toBeInTheDocument()
 
-    fireEvent.click(view.getByRole('button', { name: /show full chain/i }))
+    fireEvent.click(view.getByRole('button', { name: /show all steps/i }))
     await waitFor(() => {
-      expect(view.getByTestId('theater-mobile-tree')).toBeInTheDocument()
+      expect(view.getByTestId('theater-mobile-tree-all')).toBeInTheDocument()
     })
-    fireEvent.click(view.getByRole('button', { name: /hide full chain/i }))
-    expect(view.queryByTestId('theater-mobile-tree')).not.toBeInTheDocument()
+    expect(view.getByTestId('theater-mobile-tree-all')).toHaveTextContent('Query Planner')
+
+    fireEvent.click(view.getByRole('button', { name: /hide all steps/i }))
+    expect(view.queryByTestId('theater-mobile-tree-all')).not.toBeInTheDocument()
   })
 
   it('auto-scrolls only when console is at bottom on mobile', async () => {

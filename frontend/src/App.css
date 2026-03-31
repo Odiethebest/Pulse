@@ -393,6 +393,19 @@
   color: #d4d4d8;
 }
 
+.theater-mobile-execution-focus {
+  display: grid;
+  gap: 6px;
+}
+
+.theater-mobile-execution-focus-title {
+  margin: 0 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #71717a;
+}
+
 .theater-mobile-tree-toggle {
   border: 1px solid rgba(63, 63, 70, 0.95);
   border-radius: 10px;

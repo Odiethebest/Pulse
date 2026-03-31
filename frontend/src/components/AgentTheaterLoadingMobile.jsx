@@ -19,6 +19,7 @@ const BOOT_LINES = [
   'Warming sentiment and stance models...',
   'Awaiting first live agent signal...',
 ]
+const AUTO_SCROLL_THRESHOLD = 24
 
 function scrollToBottom(node) {
   if (!node) return
@@ -110,9 +111,9 @@ function NodeDot({ state }) {
   return <span className="theater-mobile-dot theater-mobile-dot--pending" />
 }
 
-function ExecutionTree({ nodes }) {
+function ExecutionTree({ nodes, testId = 'theater-mobile-tree' }) {
   return (
-    <div className="theater-mobile-tree" data-testid="theater-mobile-tree">
+    <div className="theater-mobile-tree" data-testid={testId}>
       {nodes.map((node) => (
         <div
           key={node.id}
@@ -170,6 +171,31 @@ export default function AgentTheaterLoadingMobile({
   const failedCount = nodes.filter((node) => node.state === 'failed').length
   const runningNodes = nodes.filter((node) => node.state === 'running')
   const failedNodes = nodes.filter((node) => node.state === 'failed')
+  const recentCompletedNodeIds = useMemo(() => {
+    const ids = []
+    for (let index = safeEvents.length - 1; index >= 0; index -= 1) {
+      const event = safeEvents[index]
+      if (event.status !== 'COMPLETED') continue
+      const matchedNode = AGENT_STEPS.find((step) => step.match(event))
+      if (!matchedNode || ids.includes(matchedNode.id)) continue
+      ids.push(matchedNode.id)
+      if (ids.length >= 2) break
+    }
+    return ids
+  }, [safeEvents])
+  const focusedNodeIds = useMemo(() => (
+    new Set([
+      ...runningNodes.map((node) => node.id),
+      ...recentCompletedNodeIds,
+    ])
+  ), [runningNodes, recentCompletedNodeIds])
+  const focusedNodes = useMemo(() => {
+    if (focusedNodeIds.size > 0) {
+      return nodes.filter((node) => focusedNodeIds.has(node.id))
+    }
+    const fallback = nodes.find((node) => node.state !== 'pending') || nodes[0] || null
+    return fallback ? [fallback] : []
+  }, [nodes, focusedNodeIds])
   const latestEvent = safeEvents[safeEvents.length - 1] || null
   const allGreen = runStatus === 'complete' && failedCount === 0 && completedCount === nodes.length
 
@@ -177,7 +203,7 @@ export default function AgentTheaterLoadingMobile({
     if (!logRef.current) return
     const node = logRef.current
     const distanceToBottom = node.scrollHeight - (node.scrollTop + node.clientHeight)
-    setIsAtBottom(distanceToBottom <= 24)
+    setIsAtBottom(distanceToBottom <= AUTO_SCROLL_THRESHOLD)
   }
 
   const jumpToLatest = () => {
@@ -344,16 +370,21 @@ export default function AgentTheaterLoadingMobile({
                   )}
                 </section>
 
+                <section className="theater-mobile-execution-focus" data-testid="theater-mobile-execution-focus">
+                  <p className="theater-mobile-execution-focus-title">Focused steps</p>
+                  <ExecutionTree nodes={focusedNodes} testId="theater-mobile-tree-focused" />
+                </section>
+
                 <button
                   type="button"
                   className="theater-mobile-tree-toggle"
                   onClick={() => setShowFullExecution((prev) => !prev)}
                   aria-expanded={showFullExecution}
                 >
-                  {showFullExecution ? 'Hide full chain' : 'Show full chain'}
+                  {showFullExecution ? 'Hide all steps' : 'Show all steps'}
                 </button>
 
-                {showFullExecution && <ExecutionTree nodes={nodes} />}
+                {showFullExecution && <ExecutionTree nodes={nodes} testId="theater-mobile-tree-all" />}
               </motion.div>
             )}
           </AnimatePresence>
