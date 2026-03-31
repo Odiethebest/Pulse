@@ -235,12 +235,11 @@
 }
 
 .theater-mobile-console {
-  height: min(56vh, 520px);
   overflow-y: auto;
   border: 1px solid rgba(39, 39, 42, 0.9);
   border-radius: 12px;
   background: rgba(10, 10, 10, 0.7);
-  padding: 10px 10px calc(9.5rem + env(safe-area-inset-bottom, 0px));
+  padding: 10px 10px calc(84px + env(safe-area-inset-bottom, 0px));
 }
 
 .theater-mobile-logline {

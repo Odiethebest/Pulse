@@ -145,7 +145,9 @@ export default function AgentTheaterLoadingMobile({
 }) {
   const [activeTab, setActiveTab] = useState('console')
   const [isAtBottom, setIsAtBottom] = useState(true)
+  const [consoleTopOffset, setConsoleTopOffset] = useState(0)
   const logRef = useRef(null)
+  const shellRef = useRef(null)
 
   const safeEvents = useMemo(() => (
     Array.isArray(agentEvents)
@@ -192,6 +194,29 @@ export default function AgentTheaterLoadingMobile({
     updateBottomState()
   }, [activeTab])
 
+  useEffect(() => {
+    const updateOffset = () => {
+      if (!logRef.current || !shellRef.current || activeTab !== 'console') return
+      const top = Math.round(logRef.current.getBoundingClientRect().top)
+      if (Number.isFinite(top) && top > 0) {
+        setConsoleTopOffset(top)
+      }
+    }
+
+    updateOffset()
+    if (typeof window === 'undefined') return undefined
+    window.addEventListener('resize', updateOffset)
+    window.addEventListener('orientationchange', updateOffset)
+    return () => {
+      window.removeEventListener('resize', updateOffset)
+      window.removeEventListener('orientationchange', updateOffset)
+    }
+  }, [activeTab])
+
+  const consoleHeight = consoleTopOffset > 0
+    ? `calc(100dvh - ${consoleTopOffset}px - 84px - env(safe-area-inset-bottom, 0px))`
+    : 'calc(100dvh - 320px)'
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 10, filter: 'blur(2px)' }}
@@ -199,6 +224,7 @@ export default function AgentTheaterLoadingMobile({
       exit={{ opacity: 0, filter: 'blur(10px)', transition: { duration: 0.6, ease: 'easeOut' } }}
       className="theater-mobile-shell"
       data-testid="theater-mobile-shell"
+      ref={shellRef}
     >
       <div className="theater-mobile-card">
         <header className="theater-mobile-header">
@@ -249,6 +275,7 @@ export default function AgentTheaterLoadingMobile({
                   className="theater-mobile-console"
                   data-testid="theater-mobile-console"
                   onScroll={updateBottomState}
+                  style={{ height: consoleHeight, minHeight: '240px' }}
                 >
                   {logLines.map((line) => (
                     <div key={line.id} className="theater-mobile-logline">

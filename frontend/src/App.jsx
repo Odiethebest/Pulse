@@ -328,7 +328,7 @@ export default function App() {
         <button
           type="button"
           onClick={cancelRun}
-          className="fixed bottom-32 sm:bottom-8 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-sm font-medium bg-rose-600/90 text-white hover:bg-rose-500 transition-colors shadow-2xl z-50"
+          className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] sm:bottom-8 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full text-sm font-medium bg-rose-600/90 text-white hover:bg-rose-500 transition-colors shadow-2xl z-50"
         >
           Stop capture (Esc)
         </button>
