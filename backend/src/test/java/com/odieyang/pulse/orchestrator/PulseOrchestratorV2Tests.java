@@ -7,7 +7,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -541,6 +544,184 @@ class PulseOrchestratorV2Tests {
                 "Global ranking should place strongest relevance item first");
     }
 
+    @Test
+    void analyzeShouldMeetPhase4CoverageTargetsAtTop16() {
+        var orchestrator = buildOrchestrator(
+                new TopicAlignedQueryPlannerAgent(),
+                new RelevanceStressRedditAgent(),
+                new RelevanceStressTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FriendshipAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "crawlerTargetTotal", 16);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinSample", 1);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinScore", 4);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainCount", 2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainRatio", 0.15);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMaxHashtags", 2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevancePlatformCap", 8);
+
+        PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+
+        assertNotNull(report.allPosts());
+        assertTrue(report.allPosts().size() <= 16, "allPosts should stay within Top16 target");
+        assertNotNull(report.crawlerStats());
+        assertEquals(16, report.crawlerStats().targetTotal(), "crawlerStats.targetTotal should be 16");
+        assertEquals(report.allPosts().size(), report.crawlerStats().fetchedTotal(),
+                "fetchedTotal should match allPosts size");
+        assertTrue(report.crawlerStats().redditCount() <= 8, "Reddit count should stay within per-platform cap");
+        assertTrue(report.crawlerStats().twitterCount() <= 8, "Twitter count should stay within per-platform cap");
+    }
+
+    @Test
+    void analyzeShouldQuantifyLowerNoiseAndHigherTopicConsistency() {
+        var orchestrator = buildOrchestrator(
+                new TopicAlignedQueryPlannerAgent(),
+                new NoisyRedditAgent(),
+                new NoisyTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FriendshipAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "crawlerTargetTotal", 16);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinSample", 1);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinScore", 4);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainCount", 2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainRatio", 0.15);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMaxHashtags", 2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevancePlatformCap", 8);
+
+        PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+
+        assertNotNull(report.allPosts());
+        assertFalse(report.allPosts().isEmpty());
+
+        List<String> topicKeywords = List.of("taylor", "swift", "sheeran", "friendship", "debate");
+        long noiseCount = report.allPosts().stream().filter(this::isLowSignalNoisePost).count();
+        double noiseRatio = ratio(noiseCount, report.allPosts().size());
+        assertTrue(noiseRatio <= 0.10,
+                "Low-signal noise ratio should be <= 10%, actual=" + noiseRatio);
+
+        long allPostsAligned = report.allPosts().stream()
+                .filter(post -> topicKeywordHits(post, topicKeywords) >= 2)
+                .count();
+        double allPostsAlignedRatio = ratio(allPostsAligned, report.allPosts().size());
+        assertTrue(allPostsAlignedRatio >= 0.75,
+                "Topic alignment ratio in allPosts should be >= 75%, actual=" + allPostsAlignedRatio);
+
+        List<CrawledPost> assignedPosts = new ArrayList<>();
+        for (TopicBucket bucket : report.topicBuckets()) {
+            if (bucket == null || bucket.topicId() == null || "unassigned".equalsIgnoreCase(bucket.topicId())) {
+                continue;
+            }
+            if (bucket.posts() != null) {
+                assignedPosts.addAll(bucket.posts());
+            }
+        }
+        assertFalse(assignedPosts.isEmpty(), "Expected assigned topic bucket posts for consistency checks");
+
+        long assignedAligned = assignedPosts.stream()
+                .filter(post -> topicKeywordHits(post, topicKeywords) >= 2)
+                .count();
+        double assignedAlignedRatio = ratio(assignedAligned, assignedPosts.size());
+        assertTrue(assignedAlignedRatio >= 0.70,
+                "Topic alignment ratio in assigned buckets should be >= 70%, actual=" + assignedAlignedRatio);
+    }
+
+    @Test
+    void analyzeShouldKeepTopCitationsStableAndSemanticallyAlignedAcrossRuns() {
+        var orchestrator = buildOrchestrator(
+                new TopicAlignedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new JitteredCoreQuoteSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FriendshipAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+
+        Set<String> coreCitationUrls = Set.of(
+                "https://reddit.com/core-1",
+                "https://reddit.com/core-2",
+                "https://x.com/core-1",
+                "https://x.com/core-2"
+        );
+        Map<String, Integer> signatureCounts = new HashMap<>();
+
+        for (int i = 0; i < 6; i++) {
+            PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+            assertNotNull(report.quickTake());
+            assertFalse(report.quickTake().isEmpty());
+            assertNotNull(report.claimEvidenceMap());
+            assertFalse(report.claimEvidenceMap().isEmpty());
+
+            ClaimEvidenceLink firstClaim = report.claimEvidenceMap().getFirst();
+            assertNotNull(firstClaim.evidenceUrls());
+            assertFalse(firstClaim.evidenceUrls().isEmpty());
+
+            long alignedCount = firstClaim.evidenceUrls().stream()
+                    .filter(coreCitationUrls::contains)
+                    .count();
+            assertTrue(alignedCount >= 2,
+                    "Frontline citations should target core query evidence URLs");
+
+            List<String> signatureParts = new ArrayList<>(new LinkedHashSet<>(firstClaim.evidenceUrls()));
+            signatureParts.sort(String::compareTo);
+            String signature = String.join("|", signatureParts);
+            signatureCounts.merge(signature, 1, Integer::sum);
+        }
+
+        int dominantSignatureCount = signatureCounts.values().stream()
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(0);
+        assertTrue(dominantSignatureCount >= 5,
+                "Top citation signature should converge across repeated same-query runs");
+    }
+
+    private boolean isLowSignalNoisePost(CrawledPost post) {
+        String text = ((post == null ? "" : post.title()) + " " + (post == null ? "" : post.snippet())).toLowerCase();
+        return text.contains("giveaway")
+                || text.contains("link in bio")
+                || text.contains("buy tickets")
+                || text.contains("subscribe for")
+                || text.contains("image 1 on x")
+                || text.contains("image on x");
+    }
+
+    private int topicKeywordHits(CrawledPost post, List<String> keywords) {
+        String text = ((post == null ? "" : post.title()) + " " + (post == null ? "" : post.snippet())).toLowerCase();
+        int hits = 0;
+        for (String keyword : keywords) {
+            if (keyword != null && !keyword.isBlank() && text.contains(keyword)) {
+                hits += 1;
+            }
+        }
+        return hits;
+    }
+
+    private double ratio(long numerator, int denominator) {
+        if (denominator <= 0) {
+            return 0.0;
+        }
+        return numerator / (double) denominator;
+    }
+
     private boolean containsCitationPair(String line, int left, int right) {
         if (line == null || line.isBlank()) {
             return false;
@@ -657,6 +838,21 @@ class PulseOrchestratorV2Tests {
                     List.of(topic + " reddit"),
                     List.of(topic + " twitter"),
                     "There are growing public concerns regarding Taiwan's reunification with China"
+            );
+        }
+    }
+
+    private static class TopicAlignedQueryPlannerAgent extends QueryPlannerAgent {
+        TopicAlignedQueryPlannerAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public QueryPlan plan(String topic) {
+            return new QueryPlan(
+                    List.of(topic + " reddit verification", topic + " reddit evidence"),
+                    List.of(topic + " twitter verification", topic + " twitter evidence"),
+                    topic
             );
         }
     }
@@ -1133,6 +1329,121 @@ class PulseOrchestratorV2Tests {
         }
     }
 
+    private static class JitteredCoreQuoteSentimentAgent extends SentimentAgent {
+        private final AtomicInteger redditCalls = new AtomicInteger();
+        private final AtomicInteger twitterCalls = new AtomicInteger();
+
+        JitteredCoreQuoteSentimentAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public SentimentResult analyze(RawPosts rawPosts) {
+            if ("reddit".equals(rawPosts.platform())) {
+                return redditSentiment(redditCalls.getAndIncrement());
+            }
+            return twitterSentiment(twitterCalls.getAndIncrement());
+        }
+
+        private SentimentResult redditSentiment(int callIndex) {
+            List<Quote> quotes = new ArrayList<>(List.of(
+                    new Quote(
+                            "Supporters defend Taylor Swift and Ed Sheeran friendship debate with detailed timeline evidence.",
+                            "https://reddit.com/core-1",
+                            "positive",
+                            "support",
+                            0.96
+                    ),
+                    new Quote(
+                            "Critics still push back, but the Taylor Swift and Ed Sheeran friendship debate remains evidence-driven.",
+                            "https://reddit.com/core-2",
+                            "negative",
+                            "oppose",
+                            0.92
+                    ),
+                    new Quote(
+                            "Weekend meme reactions unrelated to this friendship topic.",
+                            "https://reddit.com/noise-1",
+                            "neutral",
+                            "neutral",
+                            0.18
+                    ),
+                    new Quote(
+                            "Giveaway link in bio for music merch.",
+                            "https://reddit.com/noise-2",
+                            "neutral",
+                            "neutral",
+                            0.10
+                    )
+            ));
+            rotateQuotes(quotes, callIndex);
+            return new SentimentResult(
+                    "reddit",
+                    0.55,
+                    0.35,
+                    0.10,
+                    List.of("Taylor Swift friendship debate"),
+                    quotes,
+                    new CampDistribution(0.58, 0.30, 0.12),
+                    List.of(new ControversyTopic("Taylor Swift friendship debate", 72, "Core evidence conflict"))
+            );
+        }
+
+        private SentimentResult twitterSentiment(int callIndex) {
+            List<Quote> quotes = new ArrayList<>(List.of(
+                    new Quote(
+                            "X users cite direct examples in the Taylor Swift and Ed Sheeran friendship debate.",
+                            "https://x.com/core-1",
+                            "positive",
+                            "support",
+                            0.94
+                    ),
+                    new Quote(
+                            "Another core citation tracks how the Taylor Swift and Ed Sheeran friendship debate keeps splitting camps.",
+                            "https://x.com/core-2",
+                            "negative",
+                            "oppose",
+                            0.90
+                    ),
+                    new Quote(
+                            "General mood posting without meaningful topic evidence.",
+                            "https://x.com/noise-1",
+                            "neutral",
+                            "neutral",
+                            0.16
+                    ),
+                    new Quote(
+                            "Buy tickets now and follow for drops.",
+                            "https://x.com/noise-2",
+                            "neutral",
+                            "neutral",
+                            0.12
+                    )
+            ));
+            rotateQuotes(quotes, callIndex);
+            return new SentimentResult(
+                    "twitter",
+                    0.33,
+                    0.50,
+                    0.17,
+                    List.of("Taylor Swift friendship debate"),
+                    quotes,
+                    new CampDistribution(0.32, 0.52, 0.16),
+                    List.of(new ControversyTopic("Taylor Swift friendship debate", 70, "Core evidence conflict"))
+            );
+        }
+
+        private void rotateQuotes(List<Quote> quotes, int callIndex) {
+            if (quotes == null || quotes.isEmpty()) {
+                return;
+            }
+            int rotate = Math.floorMod(callIndex, quotes.size());
+            if (rotate != 0) {
+                Collections.rotate(quotes, rotate);
+            }
+        }
+    }
+
     private static class FixedStanceAgent extends StanceAgent {
         FixedStanceAgent() {
             super(null, null);
@@ -1193,6 +1504,19 @@ class PulseOrchestratorV2Tests {
         public AspectResult analyze(RawPosts reddit, RawPosts twitter) {
             return new AspectResult(List.of(
                     new ControversyTopic("Pricing", 75, "Price fairness argument")
+            ));
+        }
+    }
+
+    private static class FriendshipAspectAgent extends AspectAgent {
+        FriendshipAspectAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public AspectResult analyze(RawPosts reddit, RawPosts twitter) {
+            return new AspectResult(List.of(
+                    new ControversyTopic("Taylor Swift friendship debate", 78, "Friendship consistency and narrative split")
             ));
         }
     }
