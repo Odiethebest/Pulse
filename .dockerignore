@@ -1,0 +1,13 @@
+.git
+.idea
+.claude
+
+**/.DS_Store
+**/target
+**/node_modules
+
+frontend/dist
+Doc/history
+
+backend/.env
+frontend/.env
