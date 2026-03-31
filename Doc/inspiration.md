@@ -1,65 +1,70 @@
 # Inspiration
 
-It started with a totally normal doomscrolling night.
+Pulse started from a very ordinary problem.
 
-I was on X, half paying attention, when a post blew up:
-**“Is LeBron actually the GOAT?”**
+One night I was scrolling X and saw a thread explode:
+**"Is LeBron actually the GOAT?"**
 
-Within minutes, my feed was chaos.
-One side was posting ring arguments.
-Another side was posting longevity stats.
-Some people were dead serious.
-Some were just farming engagement with bait takes.
+The replies were flying. Some were posting rings. Some were posting longevity stats. Some were just posting bait. I wanted a fast read on what people really thought, so I jumped to Reddit and searched the same topic.
 
-I got curious and did what everyone does.
-I jumped to Reddit and searched the same topic.
+Reddit had better long-form arguments, but now I was trapped in tab switching:
 
-Now the tone was different.
-Less dunking, more long threads.
-More “here’s my full case,” less “ratio + meme.”
-But the core problem was the same:
-too much noise, too many tabs, too much context switching.
+1. X for speed and momentum
+2. Reddit for depth and structure
+3. endless manual comparison in my head
 
-I kept bouncing between X and Reddit, trying to answer a simple question:
+After twenty minutes I had a mess of tabs and no clean answer to three basic questions:
 
-1. What are people *actually* arguing about?
-2. How split is the conversation?
-3. Is the current consensus stable, or one viral clip away from flipping?
+1. What are the main camps right now?
+2. How split is the conversation across platforms?
+3. Is the current narrative stable or about to flip?
 
-After 20 minutes, I had 30 open tabs and zero clean answer.
+That was the trigger for Pulse.
 
-That was the moment.
-Not “we need another social app.”
-Not “we need another AI chat box.”
-Just this:
+The idea was not to build another social app.
+The idea was to build a fast, reliable way to synthesize public opinion without living inside two feeds.
 
-**I need a faster way to catch up on internet drama without living inside two platforms all night.**
+## Product Intent
 
-That idea became the first Pulse prototype.
+From the beginning, the product goals were strict:
 
-The prototype goal was brutally simple:
-enter one topic, get one readable answer, backed by real evidence, in one screen.
+1. One query in, one coherent cross-platform report out.
+2. Use real public posts, not generic model opinions.
+3. Keep conclusions tied to visible evidence.
+4. Show confidence and risk, not just sentiment percentages.
+5. Make the full workflow observable so users can trust the process.
 
-From day one, the product direction was clear.
+## Why Multi-Agent
 
-1. Pull signals from both X and Reddit.
-2. Distill the conflict into one frontline verdict.
-3. Show confidence, polarization, heat, and flip risk.
-4. Keep source quotes visible so users can verify the take.
-5. Make it easy to share or run the next query immediately.
+The problem is naturally modular, so Pulse was designed as a multi-agent system:
 
-In other words, Pulse is not trying to replace social platforms.
-It is trying to replace the exhausting workflow of manual cross platform “tab archaeology.”
+1. A planner agent turns a vague topic into targeted retrieval strategy.
+2. Platform agents gather raw posts from X and Reddit in parallel.
+3. Sentiment agents analyze each platform independently.
+4. A synthesis agent merges findings into one narrative.
+5. A critic agent challenges unsupported claims and bias.
 
-The product promise is straightforward:
+This structure is faster than a monolithic pass and more reliable under noisy inputs.
 
-**Less scrolling. More signal. Faster context.**
+## Why Process Visibility Matters
 
-That GOAT debate was just the first use case.
-The same pain shows up in everything:
-brands, politics, creators, product launches, breaking news.
+Most opinion tools return a final score with no transparency.
+Pulse does the opposite.
 
-People do not struggle to *find* opinions online.
-They struggle to *synthesize* them fast enough to act.
+The full execution trace streams live to the frontend so users can watch:
 
-Pulse exists for that exact gap.
+1. what was searched
+2. what data was collected
+3. how conclusions were formed
+4. where the critic forced revisions
+
+That visibility is a core product feature, not a developer debug view.
+
+## Core Promise
+
+Pulse is built for people who need signal quickly in fast-moving conversations:
+product teams, operators, founders, creators, and anyone tracking public narrative shifts.
+
+The promise is simple:
+
+**Less tab switching. More evidence. Faster, defensible context.**

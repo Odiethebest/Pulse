@@ -25,13 +25,15 @@ The target reader is a full stack engineer working in this repository.
 
 1. `architecture-and-core-logic.md`
    End to end runtime architecture and implementation map with file and method locations.
-2. `design-principles.md`
+2. `api-contract.md`
+   Backend and frontend API payload and stream contract with code ownership map.
+3. `design-principles.md`
    Engineering invariants and the concrete enforcement points in code and tests.
-3. `uiux-guidelines.md`
+4. `uiux-guidelines.md`
    Report page behavior spec with component level and CSS namespace mapping.
-4. `operations-maintenance.md`
+5. `operations-maintenance.md`
    Runtime configuration, packaging, diagnostics, and production maintenance runbook.
-5. `testing-quality.md`
+6. `testing-quality.md`
    Automated and manual quality gates with risk to test mapping.
 
 ## Working rules

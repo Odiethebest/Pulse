@@ -4,6 +4,65 @@
 
 This document defines non negotiable engineering invariants for Pulse and maps each invariant to concrete code enforcement points.
 
+## System design choices and rationale
+
+### 1. Parallel platform retrieval and analysis
+
+Decision:
+Run independent work in parallel instead of serial chains.
+
+Reason:
+Reddit and X retrieval do not depend on each other, and analysis branches are independent once data is cleaned.
+Parallel execution reduces wall clock latency for live query use cases.
+
+Primary implementation:
+
+1. `PulseOrchestrator.analyze`
+2. `RedditAgent.fetch`, `TwitterAgent.fetch`
+3. Parallel analysis agent calls in orchestrator
+
+### 2. Critic plus synthesis revision loop
+
+Decision:
+Do not trust first pass synthesis unconditionally. Add an internal critic and allow one guided rewrite.
+
+Reason:
+Single pass synthesis can overreach when source quality is uneven.
+The critic catches unsupported claims and bias patterns before final output.
+
+Primary implementation:
+
+1. `CriticAgent.critique`
+2. `PulseOrchestrator.buildRewriteGuidance`
+3. second `SynthesisAgent.synthesizeWithCoreEntity(...)` pass when gate fails
+
+### 3. Bounded revision instead of open ended loops
+
+Decision:
+Keep rewrite attempts bounded.
+
+Reason:
+Unbounded debate loops create unstable latency and can still fail to converge.
+Bounded revision keeps runtime predictable while preserving quality improvement.
+
+Primary implementation:
+
+1. Single rewrite gate path in `PulseOrchestrator.analyze`
+2. confidence threshold through `debate.confidence.threshold`
+
+### 4. Tavily as retrieval layer
+
+Decision:
+Use Tavily web search as the source retrieval substrate.
+
+Reason:
+It gives practical cross-platform coverage with domain constraints and lower operational friction than direct platform APIs for this product stage.
+
+Primary implementation:
+
+1. `TavilySearchService`
+2. `RedditAgent.fetch`, `TwitterAgent.fetch`
+
 ## Invariant set
 
 ### 1. Evidence must be real and traceable

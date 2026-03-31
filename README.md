@@ -52,6 +52,23 @@ Local endpoints:
 1. Frontend: `http://localhost:5173`
 2. Backend: `http://localhost:8080`
 
+## Container Deploy
+
+Build image:
+
+```bash
+docker build -t pulse:latest .
+```
+
+Run container:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e OPENAI_API_KEY=your_openai_key \
+  -e TAVILY_API_KEY=your_tavily_key \
+  pulse:latest
+```
+
 ## API
 
 1. `POST /api/pulse/analyze`
@@ -75,10 +92,11 @@ Developer docs:
 
 1. [Developer docs index](Doc/for-developer/README.md)
 2. [Architecture and core logic](Doc/for-developer/architecture-and-core-logic.md)
-3. [Design principles](Doc/for-developer/design-principles.md)
-4. [UIUX implementation guide](Doc/for-developer/uiux-guidelines.md)
-5. [Operations and maintenance](Doc/for-developer/operations-maintenance.md)
-6. [Testing and quality](Doc/for-developer/testing-quality.md)
+3. [API contract](Doc/for-developer/api-contract.md)
+4. [Design principles](Doc/for-developer/design-principles.md)
+5. [UIUX implementation guide](Doc/for-developer/uiux-guidelines.md)
+6. [Operations and maintenance](Doc/for-developer/operations-maintenance.md)
+7. [Testing and quality](Doc/for-developer/testing-quality.md)
 
 ## Built By
 

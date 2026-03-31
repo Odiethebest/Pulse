@@ -40,6 +40,18 @@ FINAL PULSE REPORT + LIVE SSE EXECUTION TRACE
 Core design signal:
 parallel where possible, gate quality before finalization, and keep graceful fallback paths.
 
+## Under the Hood Sequence
+
+This is the product-facing runtime sequence for one query.
+
+1. Query planner turns one topic into platform-specific retrieval queries.
+2. Reddit and Twitter agents fetch raw public discussions in parallel.
+3. Retrieved posts pass relevance tightening and dedupe.
+4. Analysis agents run in parallel for sentiment, stance, conflict, aspects, and flip risk.
+5. Synthesis agent drafts a report from structured analysis outputs.
+6. Critic agent audits evidence quality and overreach risk.
+7. If the gate fails, one guided synthesis rewrite runs before final report assembly.
+
 ## Why We Built a Multi Agent System
 
 Public opinion analysis is not one task.
@@ -70,6 +82,21 @@ We follow four design choices.
    If one component fails, the system still returns a usable report instead of crashing.
 
 ## Agent Roles and Division of Work
+
+### Core baseline responsibilities
+
+These are the minimum responsibilities expected by the product contract.
+
+1. Query planner
+   build executable query strategy per platform.
+2. Platform collectors
+   gather raw source posts and filter shell artifacts.
+3. Sentiment layer
+   produce sentiment ratios, key controversies, and representative quotes.
+4. Synthesis layer
+   merge cross-platform outputs into a readable verdict.
+5. Critic layer
+   challenge unsupported claims, bias, and overreach before finalization.
 
 ### QueryPlannerAgent
 

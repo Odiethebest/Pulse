@@ -202,36 +202,19 @@ Flow:
    `frontend/src/App.css`
    Classes prefixed with `.theater-mobile-`
 
-## API contract essentials
+## API contract reference
 
-### Public endpoints
+Detailed request and response schemas, SSE event payloads, and compatibility policy are documented in:
+`Doc/for-developer/api-contract.md`
 
-1. `POST /api/pulse/analyze`
-2. `GET /api/pulse/stream`
-3. `GET /api/actuator/health`
+This architecture document only tracks runtime ownership:
 
-Compatibility routes:
-
-1. `POST /pulse/analyze`
-2. `GET /pulse/stream`
-
-### Backend response model
-
-Canonical payload type:
-`backend/src/main/java/com/odieyang/pulse/model/PulseReport.java`
-
-Frontend critical fields and owning logic:
-
-1. `quickTake`
-   built in orchestrator `buildQuickTake`
-2. `claimEvidenceMap`
-   built in orchestrator `buildClaimEvidenceMap`
-3. `allPosts`, `topicBuckets`, `crawlerStats`
-   built in orchestrator `projectCrawledPosts`, `buildTopicBuckets`, `buildCrawlerStats`
-4. `claimAnnotations`, `riskFlags`, `revisionAnchors`
-   built in orchestrator `buildClaimAnnotations`, `buildRiskFlags`, `buildRevisionAnchors`
-5. `citationSources`
-   frontend derived field in `buildCanonicalCitationSources`
+1. Controller entrypoints
+   `PulseController.analyze`, `PulseController.stream`, `ApiHealthController.health`
+2. Main payload assembly
+   `PulseOrchestrator.analyze` and `PulseReport`
+3. Frontend normalization
+   `frontend/src/lib/api.js` `normalizeReport`
 
 ## Configuration and packaging
 

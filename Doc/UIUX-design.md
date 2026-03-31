@@ -9,6 +9,16 @@ The UI is designed to answer three questions in order:
 2. How reliable is this conclusion.
 3. What should we do next.
 
+## What Users Get in One Run
+
+This is the product level output contract the UI is built around.
+
+1. A frontline verdict that can be read in seconds.
+2. Cross-platform sentiment and camp split from X and Reddit.
+3. Controversy lenses with source-grounded quote cards.
+4. Confidence, heat, polarization, and flip risk signals.
+5. A visible execution trace to explain how the conclusion was built.
+
 ## How We Designed the Experience
 
 ### 1. Start With One Input, Not a Complex Form

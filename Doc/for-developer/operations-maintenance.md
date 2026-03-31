@@ -46,6 +46,15 @@ Reference files:
 
 ## Standard run commands
 
+### First time local setup
+
+1. Create backend runtime env file
+   `cd backend && cp .env.example .env`
+2. Install frontend dependencies
+   `cd frontend && npm install`
+3. Set required keys in `backend/.env`
+   `OPENAI_API_KEY`, `TAVILY_API_KEY`
+
 ### Local development
 
 1. Backend
@@ -59,6 +68,15 @@ Reference files:
    `cd backend && ./mvnw clean package`
 2. Run
    `cd backend/target && java -jar pulse-*.jar`
+
+### Container deployment
+
+1. Build image from repository root
+   `docker build -t pulse:latest .`
+2. Run image with runtime keys
+   `docker run --rm -p 8080:8080 -e OPENAI_API_KEY=... -e TAVILY_API_KEY=... pulse:latest`
+3. Verify service health
+   `curl http://localhost:8080/api/actuator/health`
 
 ## Build and packaging flow
 
