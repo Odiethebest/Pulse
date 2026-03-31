@@ -40,6 +40,8 @@ public class PulseOrchestrator {
             "(?i)\\b(is|are|was|were|be|being|been|has|have|had|can|could|should|would|will|may|might|must|do|does|did)\\b");
     private static final Pattern CLAUSE_BREAK_PATTERN = Pattern.compile(
             "(?i)(,|;|\\.|\\b(?:because|while|although|though|but|which|that|if|when)\\b)");
+    private static final Pattern WORD_TOKEN_PATTERN = Pattern.compile("[\\p{L}\\p{N}]+");
+    private static final Pattern HASHTAG_PATTERN = Pattern.compile("(?<!\\w)#[\\p{L}\\p{N}_]+");
     private static final List<String> REPORTER_SECTIONS = List.of(
             "Lead",
             "Frontline Clash",
@@ -48,6 +50,26 @@ public class PulseOrchestrator {
             "Why It Matters",
             "Reporter Note"
     );
+    private static final Set<String> RELEVANCE_STOPWORDS = Set.of(
+            "the", "a", "an", "and", "or", "for", "with", "from", "about", "around", "over", "under", "into",
+            "reddit", "twitter", "tweet", "tweets", "post", "posts", "discussion", "discussions", "public",
+            "opinion", "sentiment", "debate", "topic", "people", "what", "how", "why", "this", "that", "these",
+            "those", "there", "their", "they", "them", "our", "your", "you", "is", "are", "was", "were", "be",
+            "been", "being", "on", "in", "of", "to", "by", "as", "at", "it", "its", "x", "site"
+    );
+    private static final List<String> LOW_SIGNAL_MARKERS = List.of(
+            "image on x",
+            "image 1 on x",
+            "image 2 on x",
+            "listen now",
+            "stream now",
+            "buy tickets",
+            "link in bio",
+            "giveaway",
+            "follow for",
+            "subscribe for"
+    );
+    private static final int QUICK_TAKE_MAX_CITATIONS_PER_CLAIM = 2;
 
     private final QueryPlannerAgent queryPlannerAgent;
     private final RedditAgent redditAgent;
@@ -88,6 +110,21 @@ public class PulseOrchestrator {
     @Value("${crawler.platform-imbalance.warn-gap:70}")
     private int crawlerPlatformImbalanceWarnGap = 70;
 
+    @Value("${crawler.relevance.min-sample:12}")
+    private int crawlerRelevanceMinSample = 12;
+
+    @Value("${crawler.relevance.min-score:2}")
+    private int crawlerRelevanceMinScore = 2;
+
+    @Value("${crawler.relevance.min-retain-count:6}")
+    private int crawlerRelevanceMinRetainCount = 6;
+
+    @Value("${crawler.relevance.min-retain-ratio:0.35}")
+    private double crawlerRelevanceMinRetainRatio = 0.35;
+
+    @Value("${crawler.relevance.max-hashtags:4}")
+    private int crawlerRelevanceMaxHashtags = 4;
+
     public PulseReport analyze(String topic) {
         return analyze(topic, null, "en-US");
     }
@@ -116,8 +153,10 @@ public class PulseOrchestrator {
             CompletableFuture<RawPosts> twitterFuture =
                     CompletableFuture.supplyAsync(() -> scoped(runId, () -> twitterAgent.fetch(plan.twitterQueries())));
 
-            RawPosts reddit = redditFuture.join();
-            RawPosts twitter = twitterFuture.join();
+            RawPosts fetchedReddit = redditFuture.join();
+            RawPosts fetchedTwitter = twitterFuture.join();
+            RawPosts reddit = tightenCrawledPosts(fetchedReddit, topic, plan.topicSummary(), plan.redditQueries());
+            RawPosts twitter = tightenCrawledPosts(fetchedTwitter, topic, plan.topicSummary(), plan.twitterQueries());
 
             // Step 3: Analyze in parallel
             CompletableFuture<SentimentResult> redditSentimentFuture =
@@ -208,7 +247,10 @@ public class PulseOrchestrator {
             int dramaScore = computeDramaScore(heatScore, polarizationScore, controversyTopics);
             List<FlipSignal> flipSignals = chooseFlipSignals(flipRiskResult, critique);
             List<String> revisionDelta = chooseRevisionDelta(critique);
-            List<String> evidenceUrls = collectEvidenceUrls(redditSentiment, twitterSentiment);
+            List<EvidenceQuote> evidenceQuotes = collectEvidenceQuotes(redditSentiment, twitterSentiment);
+            List<String> evidenceUrls = evidenceQuotes.stream()
+                    .map(EvidenceQuote::url)
+                    .toList();
             List<ClaimEvidenceLink> claimEvidenceMap = buildClaimEvidenceMap(
                     coreEntity,
                     campDistribution,
@@ -217,7 +259,7 @@ public class PulseOrchestrator {
                     flipRiskScore,
                     debateTriggered,
                     platformDiff,
-                    evidenceUrls
+                    evidenceQuotes
             );
             List<RevisionAnchor> revisionAnchors = buildRevisionAnchors(revisionDelta, claimEvidenceMap);
             List<ClaimAnnotation> claimAnnotations = buildClaimAnnotations(critique, revisionAnchors);
@@ -541,7 +583,7 @@ public class PulseOrchestrator {
             int flipRiskScore,
             boolean debateTriggered,
             String platformDiff,
-            List<String> evidenceUrls
+            List<EvidenceQuote> evidenceQuotes
     ) {
         String smoothTopic = coreEntity == null || coreEntity.isBlank() ? "the subject" : coreEntity;
         int supportPct = (int) Math.round(nz(campDistribution.support()) * 100);
@@ -564,10 +606,11 @@ public class PulseOrchestrator {
                 platformDiff,
                 debateTriggered ? " Critic revision has already been applied." : ""
         );
+        Set<String> globallyUsedUrls = new LinkedHashSet<>();
         return List.of(
-                new ClaimEvidenceLink("C1", campLine, pickEvidenceUrlsForClaim(evidenceUrls, 0, 3)),
-                new ClaimEvidenceLink("C2", heatLine, pickEvidenceUrlsForClaim(evidenceUrls, 1, 3)),
-                new ClaimEvidenceLink("C3", flipLine, pickEvidenceUrlsForClaim(evidenceUrls, 2, 3))
+                new ClaimEvidenceLink("C1", campLine, pickEvidenceUrlsForClaim(campLine, evidenceQuotes, globallyUsedUrls)),
+                new ClaimEvidenceLink("C2", heatLine, pickEvidenceUrlsForClaim(heatLine, evidenceQuotes, globallyUsedUrls)),
+                new ClaimEvidenceLink("C3", flipLine, pickEvidenceUrlsForClaim(flipLine, evidenceQuotes, globallyUsedUrls))
         );
     }
 
@@ -821,61 +864,220 @@ public class PulseOrchestrator {
                 """.formatted(lead, frontline, controversies, flipWatch, whyItMatters, reporterNote);
     }
 
-    private List<String> collectEvidenceUrls(SentimentResult redditSentiment, SentimentResult twitterSentiment) {
-        List<String> urls = new ArrayList<>();
-        addQuoteUrls(urls, redditSentiment);
-        addQuoteUrls(urls, twitterSentiment);
-        return urls.stream().distinct().toList();
+    private List<EvidenceQuote> collectEvidenceQuotes(SentimentResult redditSentiment, SentimentResult twitterSentiment) {
+        LinkedHashMap<String, EvidenceQuote> deduped = new LinkedHashMap<>();
+        addEvidenceQuotes(deduped, redditSentiment, "Reddit");
+        addEvidenceQuotes(deduped, twitterSentiment, "Twitter");
+        return new ArrayList<>(deduped.values());
     }
 
-    private void addQuoteUrls(List<String> urls, SentimentResult sentimentResult) {
+    private void addEvidenceQuotes(
+            LinkedHashMap<String, EvidenceQuote> deduped,
+            SentimentResult sentimentResult,
+            String platform
+    ) {
         if (sentimentResult == null || sentimentResult.representativeQuotes() == null) {
             return;
         }
-        sentimentResult.representativeQuotes().stream()
-                .map(Quote::url)
-                .filter(url -> url != null && !url.isBlank())
-                .forEach(urls::add);
+        for (Quote quote : sentimentResult.representativeQuotes()) {
+            if (quote == null || quote.url() == null || quote.url().isBlank()) {
+                continue;
+            }
+            String normalizedUrl = normalizeForMatch(quote.url());
+            String dedupKey = "url::" + normalizedUrl;
+            deduped.putIfAbsent(dedupKey, new EvidenceQuote(
+                    quote.url(),
+                    quote.text(),
+                    sanitizeEvidenceWeight(quote.evidenceWeight()),
+                    platform
+            ));
+        }
     }
 
-    private List<String> pickEvidenceUrlsForClaim(List<String> urls, int claimIndex, int claimCount) {
-        if (urls.isEmpty()) {
+    private List<String> pickEvidenceUrlsForClaim(
+            String claim,
+            List<EvidenceQuote> evidenceQuotes,
+            Set<String> globallyUsedUrls
+    ) {
+        if (evidenceQuotes == null || evidenceQuotes.isEmpty()) {
             return List.of();
         }
-        int targetDistinct = Math.min(Math.max(5, claimCount), urls.size());
-        List<Integer> anchors = pickEvenlySpacedIndexes(urls.size(), targetDistinct);
-        List<String> selected = new ArrayList<>();
-        for (int i = claimIndex; i < anchors.size(); i += claimCount) {
-            selected.add(urls.get(anchors.get(i)));
+
+        List<String> claimKeywords = claimKeywords(claim);
+        List<ScoredEvidenceQuote> scored = new ArrayList<>();
+        for (int i = 0; i < evidenceQuotes.size(); i++) {
+            EvidenceQuote quote = evidenceQuotes.get(i);
+            int relevanceScore = claimRelevanceScore(claimKeywords, quote);
+            int evidenceScore = clampScore((int) Math.round(quote.evidenceWeight() * 100.0));
+            int orderScore = recencyScore(i, evidenceQuotes.size());
+            int noveltyScore = globallyUsedUrls.contains(quote.url()) ? 0 : 10;
+            double priorityScore = relevanceScore * 0.55
+                    + evidenceScore * 0.25
+                    + orderScore * 0.15
+                    + noveltyScore * 0.05;
+            scored.add(new ScoredEvidenceQuote(
+                    quote,
+                    relevanceScore,
+                    evidenceScore,
+                    orderScore,
+                    priorityScore
+            ));
         }
+
+        scored.sort((left, right) -> {
+            int byPriority = Double.compare(right.priorityScore(), left.priorityScore());
+            if (byPriority != 0) {
+                return byPriority;
+            }
+            int byRelevance = Integer.compare(right.relevanceScore(), left.relevanceScore());
+            if (byRelevance != 0) {
+                return byRelevance;
+            }
+            int byEvidence = Integer.compare(right.evidenceScore(), left.evidenceScore());
+            if (byEvidence != 0) {
+                return byEvidence;
+            }
+            return Integer.compare(right.orderScore(), left.orderScore());
+        });
+
+        int targetCount = evidenceQuotes.size() >= 5 ? QUICK_TAKE_MAX_CITATIONS_PER_CLAIM : 1;
+        List<ScoredEvidenceQuote> unused = scored.stream()
+                .filter(candidate -> globallyUsedUrls == null || !globallyUsedUrls.contains(candidate.quote().url()))
+                .toList();
+        List<ScoredEvidenceQuote> primaryPool = unused.isEmpty() ? scored : unused;
+        LinkedHashSet<String> selected = new LinkedHashSet<>();
+        ScoredEvidenceQuote primary = primaryPool.getFirst();
+        selected.add(primary.quote().url());
+
+        if (targetCount > 1) {
+            addDifferentPlatformCandidate(selected, unused, primary.quote().platform());
+            if (selected.size() < targetCount) {
+                addDifferentPlatformCandidate(selected, scored, primary.quote().platform());
+            }
+        }
+
+        fillSelectedFromPool(selected, unused, targetCount);
+        fillSelectedFromPool(selected, scored, targetCount);
+
         if (selected.isEmpty()) {
-            selected.add(urls.get(Math.min(claimIndex, urls.size() - 1)));
+            selected.add(evidenceQuotes.getFirst().url());
         }
-        return selected.stream().distinct().toList();
+        if (globallyUsedUrls != null) {
+            globallyUsedUrls.addAll(selected);
+        }
+        return new ArrayList<>(selected);
     }
 
-    private List<Integer> pickEvenlySpacedIndexes(int totalSize, int count) {
-        if (totalSize <= 0 || count <= 0) {
+    private void addDifferentPlatformCandidate(
+            LinkedHashSet<String> selected,
+            List<ScoredEvidenceQuote> candidates,
+            String primaryPlatform
+    ) {
+        if (candidates == null || candidates.isEmpty()) {
+            return;
+        }
+        for (ScoredEvidenceQuote candidate : candidates) {
+            String url = candidate.quote().url();
+            if (selected.contains(url)) {
+                continue;
+            }
+            if (candidate.quote().platform().equalsIgnoreCase(primaryPlatform)) {
+                continue;
+            }
+            selected.add(url);
+            return;
+        }
+    }
+
+    private void fillSelectedFromPool(
+            LinkedHashSet<String> selected,
+            List<ScoredEvidenceQuote> candidates,
+            int targetCount
+    ) {
+        if (candidates == null || candidates.isEmpty() || selected.size() >= targetCount) {
+            return;
+        }
+        for (ScoredEvidenceQuote candidate : candidates) {
+            if (selected.size() >= targetCount) {
+                return;
+            }
+            selected.add(candidate.quote().url());
+        }
+    }
+
+    private List<String> claimKeywords(String claim) {
+        String normalized = normalizeForMatch(claim);
+        if (normalized.isBlank()) {
             return List.of();
         }
-        if (count == 1) {
-            return List.of(0);
+        LinkedHashSet<String> keywords = new LinkedHashSet<>();
+        Matcher tokenMatcher = WORD_TOKEN_PATTERN.matcher(normalized);
+        while (tokenMatcher.find()) {
+            String token = tokenMatcher.group();
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            if (RELEVANCE_STOPWORDS.contains(token)) {
+                continue;
+            }
+            if (!containsCjk(token) && token.length() < 3) {
+                continue;
+            }
+            if (containsCjk(token) && token.length() < 2) {
+                continue;
+            }
+            keywords.add(token);
         }
-        List<Integer> indexes = new ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            double ratio = (double) i / (count - 1);
-            int candidate = (int) Math.round(ratio * (totalSize - 1));
-            if (indexes.isEmpty() || indexes.getLast() != candidate) {
-                indexes.add(candidate);
+        if (keywords.isEmpty() && normalized.length() >= 4 && normalized.length() <= 90) {
+            keywords.add(normalized);
+        }
+        return new ArrayList<>(keywords);
+    }
+
+    private int claimRelevanceScore(List<String> claimKeywords, EvidenceQuote quote) {
+        if (quote == null) {
+            return 0;
+        }
+        String source = normalizeForMatch(
+                (quote.text() == null ? "" : quote.text())
+                        + " "
+                        + (quote.url() == null ? "" : quote.url())
+        );
+        if (source.isBlank()) {
+            return 0;
+        }
+        if (claimKeywords == null || claimKeywords.isEmpty()) {
+            return 0;
+        }
+        int score = 0;
+        int hits = 0;
+        for (String keyword : claimKeywords) {
+            if (keyword == null || keyword.isBlank()) {
+                continue;
+            }
+            if (!source.contains(keyword)) {
+                continue;
+            }
+            hits += 1;
+            if (containsCjk(keyword)) {
+                score += 8;
+            } else if (keyword.length() >= 8) {
+                score += 13;
+            } else {
+                score += 9;
             }
         }
-        for (int i = 0; indexes.size() < count && i < totalSize; i++) {
-            if (!indexes.contains(i)) {
-                indexes.add(i);
-            }
+        if (hits >= 2) {
+            score += 8;
         }
-        indexes.sort(Integer::compareTo);
-        return indexes;
+        return clampScore(score);
+    }
+
+    private double sanitizeEvidenceWeight(Double value) {
+        if (value == null || Double.isNaN(value) || Double.isInfinite(value)) {
+            return 0.5;
+        }
+        return Math.max(0.0, Math.min(1.0, value));
     }
 
     private String renderEvidenceRefs(List<String> evidenceUrls, List<String> allEvidenceUrls) {
@@ -981,6 +1183,251 @@ public class PulseOrchestrator {
         return "text::" + normalizeForMatch(post.platform())
                 + "::" + normalizeForMatch(post.title())
                 + "::" + normalizeForMatch(post.snippet());
+    }
+
+    private RawPosts tightenCrawledPosts(
+            RawPosts rawPosts,
+            String topic,
+            String topicSummary,
+            List<String> plannedQueries
+    ) {
+        if (rawPosts == null || rawPosts.posts() == null || rawPosts.posts().isEmpty()) {
+            return rawPosts;
+        }
+
+        List<RawPost> originalPosts = rawPosts.posts();
+        int sampleThreshold = Math.max(1, crawlerRelevanceMinSample);
+        if (originalPosts.size() < sampleThreshold) {
+            return rawPosts;
+        }
+
+        List<String> anchors = buildRelevanceAnchors(topic, topicSummary, plannedQueries);
+        if (anchors.isEmpty()) {
+            return rawPosts;
+        }
+
+        String normalizedTopic = normalizeForMatch(topic);
+        List<ScoredRawPost> scoredPosts = new ArrayList<>();
+        int hardRejected = 0;
+        for (RawPost post : originalPosts) {
+            if (post == null) {
+                continue;
+            }
+            if (isHardIrrelevantPost(post, normalizedTopic, anchors)) {
+                hardRejected += 1;
+                continue;
+            }
+            int score = postRelevanceScore(post, normalizedTopic, anchors);
+            scoredPosts.add(new ScoredRawPost(post, score));
+        }
+
+        if (scoredPosts.isEmpty()) {
+            return rawPosts;
+        }
+
+        int minScore = Math.max(0, crawlerRelevanceMinScore);
+        List<RawPost> thresholdKept = scoredPosts.stream()
+                .filter(item -> item.score() >= minScore)
+                .map(ScoredRawPost::post)
+                .toList();
+
+        int minRetainCount = Math.max(1, crawlerRelevanceMinRetainCount);
+        int ratioRetainCount = (int) Math.ceil(originalPosts.size() * clampRatio(crawlerRelevanceMinRetainRatio));
+        int requiredRetainCount = Math.min(
+                originalPosts.size(),
+                Math.max(minRetainCount, ratioRetainCount)
+        );
+        requiredRetainCount = Math.min(requiredRetainCount, scoredPosts.size());
+
+        List<RawPost> finalPosts;
+        if (thresholdKept.size() >= requiredRetainCount) {
+            finalPosts = thresholdKept;
+        } else {
+            finalPosts = scoredPosts.stream()
+                    .sorted(Comparator.comparingInt(ScoredRawPost::score).reversed())
+                    .limit(requiredRetainCount)
+                    .map(ScoredRawPost::post)
+                    .toList();
+        }
+
+        if (finalPosts.size() >= originalPosts.size()) {
+            return rawPosts;
+        }
+
+        int filteredCount = originalPosts.size() - finalPosts.size();
+        String platform = rawPosts.platform() == null ? "unknown" : rawPosts.platform();
+        log.info("Relevance filter tightened {} posts: kept {}/{} (hardRejected={}, anchors={})",
+                platform,
+                finalPosts.size(),
+                originalPosts.size(),
+                hardRejected,
+                anchors.size());
+        return new RawPosts(rawPosts.platform(), finalPosts);
+    }
+
+    private List<String> buildRelevanceAnchors(String topic, String topicSummary, List<String> plannedQueries) {
+        LinkedHashSet<String> anchors = new LinkedHashSet<>();
+        collectAnchorTokens(anchors, topic);
+        collectAnchorTokens(anchors, topicSummary);
+        if (plannedQueries != null) {
+            for (String query : plannedQueries) {
+                collectAnchorTokens(anchors, query);
+            }
+        }
+        return anchors.stream().limit(40).toList();
+    }
+
+    private void collectAnchorTokens(Set<String> anchors, String text) {
+        String normalized = normalizeForMatch(text);
+        if (normalized.isBlank()) {
+            return;
+        }
+
+        if (normalized.length() >= 8 && normalized.length() <= 80) {
+            anchors.add(normalized);
+        }
+
+        Matcher tokenMatcher = WORD_TOKEN_PATTERN.matcher(normalized);
+        while (tokenMatcher.find()) {
+            String token = tokenMatcher.group();
+            if (token == null || token.isBlank()) {
+                continue;
+            }
+            if (RELEVANCE_STOPWORDS.contains(token)) {
+                continue;
+            }
+            if (!containsCjk(token) && token.length() < 3) {
+                continue;
+            }
+            if (containsCjk(token) && token.length() < 2) {
+                continue;
+            }
+            anchors.add(token);
+        }
+    }
+
+    private int postRelevanceScore(RawPost post, String normalizedTopic, List<String> anchors) {
+        String title = normalizeForMatch(post.title());
+        String snippet = normalizeForMatch(post.snippet());
+        String combined = normalizeForMatch(title + " " + snippet);
+        if (combined.isBlank()) {
+            return 0;
+        }
+
+        int score = 0;
+        int uniqueAnchorHits = 0;
+        for (String anchor : anchors) {
+            if (anchor == null || anchor.isBlank()) {
+                continue;
+            }
+            if (!combined.contains(anchor)) {
+                continue;
+            }
+            uniqueAnchorHits += 1;
+            if (containsCjk(anchor)) {
+                score += 2;
+            } else if (anchor.length() >= 8) {
+                score += 2;
+            } else {
+                score += 1;
+            }
+        }
+
+        if (!normalizedTopic.isBlank() && combined.contains(normalizedTopic)) {
+            score += 4;
+        }
+        if (uniqueAnchorHits >= 2) {
+            score += 2;
+        }
+        if (uniqueAnchorHits == 1 && anchors.size() >= 6) {
+            score -= 1;
+        }
+        if (looksLikeLowSignalNoise(combined)) {
+            score -= 2;
+        }
+
+        int hashtagCount = hashtagCount(post);
+        if (hashtagCount > crawlerRelevanceMaxHashtags) {
+            score -= 2;
+        }
+        return score;
+    }
+
+    private boolean isHardIrrelevantPost(RawPost post, String normalizedTopic, List<String> anchors) {
+        String combined = normalizeForMatch((post.title() == null ? "" : post.title())
+                + " "
+                + (post.snippet() == null ? "" : post.snippet()));
+        if (combined.isBlank()) {
+            return true;
+        }
+        if (combined.contains("javascript is disabled in this browser")
+                || combined.contains("javascript is not available")) {
+            return true;
+        }
+
+        int anchorHits = 0;
+        for (String anchor : anchors) {
+            if (anchor == null || anchor.isBlank()) {
+                continue;
+            }
+            if (combined.contains(anchor)) {
+                anchorHits += 1;
+                if (anchorHits >= 1) {
+                    break;
+                }
+            }
+        }
+
+        int hashtags = hashtagCount(post);
+        boolean hashtagSpam = hashtags > crawlerRelevanceMaxHashtags && anchorHits == 0;
+        boolean lowSignal = looksLikeLowSignalNoise(combined) && anchorHits == 0;
+        boolean topicMiss = !normalizedTopic.isBlank() && !combined.contains(normalizedTopic) && anchorHits == 0;
+        return hashtagSpam || lowSignal || topicMiss;
+    }
+
+    private boolean looksLikeLowSignalNoise(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        for (String marker : LOW_SIGNAL_MARKERS) {
+            if (text.contains(marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int hashtagCount(RawPost post) {
+        String text = (post == null ? "" : (post.title() == null ? "" : post.title()) + " " + (post.snippet() == null ? "" : post.snippet()));
+        Matcher matcher = HASHTAG_PATTERN.matcher(text);
+        int count = 0;
+        while (matcher.find()) {
+            count += 1;
+        }
+        return count;
+    }
+
+    private boolean containsCjk(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            Character.UnicodeScript script = Character.UnicodeScript.of(value.charAt(i));
+            if (script == Character.UnicodeScript.HAN
+                    || script == Character.UnicodeScript.HIRAGANA
+                    || script == Character.UnicodeScript.KATAKANA
+                    || script == Character.UnicodeScript.HANGUL) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private double clampRatio(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return 0.35;
+        }
+        return Math.max(0.10, Math.min(0.95, value));
     }
 
     private List<TopicBucket> buildTopicBuckets(List<ControversyTopic> topics, List<CrawledPost> posts) {
@@ -1410,6 +1857,26 @@ public class PulseOrchestrator {
     private record TopicAssignment(
             int ruleScore,
             boolean llmAssigned
+    ) {}
+
+    private record ScoredRawPost(
+            RawPost post,
+            int score
+    ) {}
+
+    private record EvidenceQuote(
+            String url,
+            String text,
+            double evidenceWeight,
+            String platform
+    ) {}
+
+    private record ScoredEvidenceQuote(
+            EvidenceQuote quote,
+            int relevanceScore,
+            int evidenceScore,
+            int orderScore,
+            double priorityScore
     ) {}
 
     private record CrawlProjection(

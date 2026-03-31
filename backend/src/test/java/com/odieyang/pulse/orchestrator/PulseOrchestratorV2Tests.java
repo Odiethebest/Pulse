@@ -231,6 +231,34 @@ class PulseOrchestratorV2Tests {
     }
 
     @Test
+    void quickTakeShouldAvoidLegacyFixedOffsetCitationPairing() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new ClaimMatchedQuoteSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+
+        PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+
+        assertTrue(report.quickTake().size() >= 2);
+        String first = report.quickTake().get(0);
+        String second = report.quickTake().get(1);
+
+        assertFalse(containsCitationPair(first, 1, 5),
+                "First quickTake line should not fall back to legacy [Q1][Q5] pairing");
+        assertFalse(containsCitationPair(second, 2, 6),
+                "Second quickTake line should not fall back to legacy [Q2][Q6] pairing");
+    }
+
+    @Test
     void analyzeShouldEmitPhase3CrawlerSignalsAndRankedBucketPosts() {
         var orchestrator = buildOrchestrator(
                 new FixedQueryPlannerAgent(),
@@ -270,6 +298,51 @@ class PulseOrchestratorV2Tests {
         assertNotNull(top.sortScore());
         assertEquals("llm", top.classificationMethod());
         assertEquals("https://reddit.com/r/1", top.url());
+    }
+
+    @Test
+    void analyzeShouldTightenNoisyCrawlerPostsByRelevance() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new NoisyRedditAgent(),
+                new NoisyTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinSample", 1);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinScore", 2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainCount", 2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainRatio", 0.2);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMaxHashtags", 3);
+
+        PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+
+        assertNotNull(report.allPosts());
+        assertTrue(report.allPosts().size() < 12, "Expected noisy posts to be filtered");
+        assertTrue(report.allPosts().stream().noneMatch(post ->
+                        String.valueOf(post.snippet()).toLowerCase().contains("giveaway")),
+                "Expected giveaway noise to be removed");
+        assertTrue(report.allPosts().stream().noneMatch(post ->
+                        String.valueOf(post.snippet()).toLowerCase().contains("image 1 on x")),
+                "Expected social image shell noise to be removed");
+        assertTrue(report.allPosts().stream().anyMatch(post ->
+                        String.valueOf(post.snippet()).toLowerCase().contains("friendship")),
+                "Expected topic-relevant friendship posts to remain");
+    }
+
+    private boolean containsCitationPair(String line, int left, int right) {
+        if (line == null || line.isBlank()) {
+            return false;
+        }
+        String a = "[Q" + left + "]";
+        String b = "[Q" + right + "]";
+        return line.contains(a + " " + b) || line.contains(b + " " + a);
     }
 
     private PulseOrchestrator buildOrchestrator(
@@ -354,6 +427,42 @@ class PulseOrchestratorV2Tests {
             return new RawPosts("twitter", List.of(
                     new RawPost("t1", "Twitter snippet 1", "https://x.com/1"),
                     new RawPost("t2", "Twitter snippet 2", "https://x.com/2")
+            ));
+        }
+    }
+
+    private static class NoisyRedditAgent extends RedditAgent {
+        NoisyRedditAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public RawPosts fetch(List<String> queries) {
+            return new RawPosts("reddit", List.of(
+                    new RawPost("Thread 1", "Fans debate Taylor Swift friendship with Ed Sheeran.", "https://reddit.com/r/noisy/1"),
+                    new RawPost("Thread 2", "Ed Sheeran says their friendship stayed stable over years.", "https://reddit.com/r/noisy/2"),
+                    new RawPost("Thread 3", "Their friendship timeline sparks another debate this week.", "https://reddit.com/r/noisy/3"),
+                    new RawPost("Promo", "Crypto giveaway now. Follow for rewards.", "https://reddit.com/r/noisy/4"),
+                    new RawPost("Promo", "Stream now and subscribe for updates.", "https://reddit.com/r/noisy/5"),
+                    new RawPost("Noise", "Completely unrelated movie trailer reactions.", "https://reddit.com/r/noisy/6")
+            ));
+        }
+    }
+
+    private static class NoisyTwitterAgent extends TwitterAgent {
+        NoisyTwitterAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public RawPosts fetch(List<String> queries) {
+            return new RawPosts("twitter", List.of(
+                    new RawPost("Tweet 1", "Taylor Swift and Ed Sheeran friendship still looks strong.", "https://x.com/noisy/1"),
+                    new RawPost("Tweet 2", "People argue whether their friendship changed after tours.", "https://x.com/noisy/2"),
+                    new RawPost("Tweet 3", "Friendship debate keeps trending among fans.", "https://x.com/noisy/3"),
+                    new RawPost("Spam", "#TaylorSwift #EdSheeran #Music #Pop #Viral #FanCam image 1 on X", "https://x.com/noisy/4"),
+                    new RawPost("Spam", "Buy tickets now. Link in bio for exclusive drops.", "https://x.com/noisy/5"),
+                    new RawPost("Noise", "General weekend mood post unrelated to the topic.", "https://x.com/noisy/6")
             ));
         }
     }
@@ -480,6 +589,83 @@ class PulseOrchestratorV2Tests {
                     ),
                     new CampDistribution(0.32, 0.52, 0.16),
                     List.of(new ControversyTopic("Credibility", 66, "Trust concerns"))
+            );
+        }
+    }
+
+    private static class ClaimMatchedQuoteSentimentAgent extends SentimentAgent {
+        ClaimMatchedQuoteSentimentAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public SentimentResult analyze(RawPosts rawPosts) {
+            if ("reddit".equals(rawPosts.platform())) {
+                return new SentimentResult(
+                        "reddit",
+                        0.55,
+                        0.35,
+                        0.10,
+                        List.of("pricing flashpoint"),
+                        List.of(
+                                new Quote(
+                                        "Supporters still defend Taylor Swift and Ed Sheeran friendship.",
+                                        "https://reddit.com/r/1",
+                                        "positive",
+                                        "support",
+                                        0.92
+                                ),
+                                new Quote(
+                                        "Pricing flashpoint and tour costs dominate this dispute.",
+                                        "https://reddit.com/r/2",
+                                        "neutral",
+                                        "neutral",
+                                        0.84
+                                ),
+                                new Quote(
+                                        "Consensus remains fragile and could flip with fresh evidence.",
+                                        "https://reddit.com/r/3",
+                                        "negative",
+                                        "oppose",
+                                        0.88
+                                )
+                        ),
+                        new CampDistribution(0.58, 0.30, 0.12),
+                        List.of(new ControversyTopic("pricing flashpoint", 70, "Price fairness fight"))
+                );
+            }
+
+            return new SentimentResult(
+                    "twitter",
+                    0.33,
+                    0.50,
+                    0.17,
+                    List.of("consensus volatility"),
+                    List.of(
+                            new Quote(
+                                    "Fans defend Taylor and Ed friendship against backlash on X.",
+                                    "https://x.com/1",
+                                    "positive",
+                                    "support",
+                                    0.90
+                            ),
+                            new Quote(
+                                    "Flashpoint on X focuses on pricing fairness and dispute intensity.",
+                                    "https://x.com/2",
+                                    "neutral",
+                                    "neutral",
+                                    0.82
+                            ),
+                            new Quote(
+                                    "Narrative consensus on X looks volatile when new evidence lands.",
+                                    "https://x.com/3",
+                                    "negative",
+                                    "oppose",
+                                    0.86
+                            )
+                    ),
+                    new CampDistribution(0.32, 0.52, 0.16),
+                    List.of(new ControversyTopic("consensus volatility", 66, "Trust concerns"))
             );
         }
     }
