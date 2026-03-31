@@ -1,64 +1,57 @@
-# Pulse 设计理念与决策原则
+# Pulse Design Principles
 
-Last updated: 2026-03-31
+## Product intent
 
-## 1. 产品定位
+Pulse is a full stack system that turns one topic query into a report with source grounded evidence.
 
-Pulse 的核心定位是：
+1. Show what people are arguing about across platforms.
+2. Keep each key claim tied to real source content.
+3. Balance speed quality and cost for daily production use.
 
-1. 用一条 query 快速还原跨平台舆论冲突全貌。
-2. 用可解释证据支撑结论，而不是输出“看起来像结论”的空话。
-3. 在速度、质量、成本之间保持可持续的工程平衡。
+## Core engineering principles
 
-## 2. 核心设计原则
+### Evidence first
 
-### 2.1 Evidence-first（证据优先）
+1. Do not show synthetic comments as real user content.
+2. Keep source links traceable from verdict to report sections.
+3. Rank evidence by semantic relevance and evidence strength.
 
-- 结论必须可回溯到真实来源。
-- 前端展示的评论与引用必须来自真实抓取数据，不拼接伪评论。
-- 引用策略优先“语义相关 + 证据强度”，不按位置机械配对。
+### Explainability first
 
-### 2.2 Explainability（可解释性优先）
+1. Every major score must have plain language meaning.
+2. Critic findings must be visible in the report.
+3. Crawler quality must be measurable through structured stats.
 
-- 关键分数必须有语义翻译。
-- Critic 修改、证据缺口、风险信号要可视化暴露，而不是藏在日志里。
-- Crawler 质量需要结构化指标（coverage、unassigned、platform balance）。
+### Reliable degradation
 
-### 2.3 Reliability（可靠降级）
+1. External dependency failures must not break the full run by default.
+2. Single platform failure must degrade to partial output.
+3. Logs and events must allow fast root cause analysis.
 
-- 外部依赖（OpenAI/Tavily）失败时，系统需要可降级并保持主链路可用。
-- 单平台失败不应导致整次分析崩溃。
-- 所有关键阶段都应有可观测事件与可定位日志。
+### Clean separation
 
-### 2.4 Separation（隔离与边界）
+1. Backend separates fetch analysis synthesis and assembly.
+2. Frontend separates transport state and presentation.
+3. Mobile and desktop behavior stay isolated to avoid cross regressions.
 
-- 后端：抓取、分析、生成、评分、组装分层明确。
-- 前端：网络/状态在 hook 与 adapter，展示在组件。
-- 移动端与桌面端策略隔离，避免样式/行为互相污染。
+### Pragmatic iteration
 
-### 2.5 Pragmatism（务实迭代）
+1. Fix user visible quality issues before adding new features.
+2. Ship incremental improvements with tests.
+3. Keep documents aligned with production behavior.
 
-- 优先“能稳定产出高质量结果”的方案，而不是理论最优。
-- 先解决主痛点（噪音、机械引用、遮挡/可读性）再扩能力。
-- 文档必须和当前实现对齐，过时方案归档到 `Doc/history/`。
+## Decision checklist
 
-## 3. 决策基线（做方案时必须回答）
+Use this checklist for any major change.
 
-每次架构或体验改动，至少回答以下问题：
+1. Does this change increase evidence quality or report clarity.
+2. Does this change preserve graceful degradation.
+3. Does this change increase coupling between unrelated modules.
+4. Does this change include regression tests.
+5. Does this change require documentation updates.
 
-1. 这次改动是否提高了“结论与证据绑定强度”？
-2. 是否提高了失败场景下的可降级能力？
-3. 是否引入跨端耦合风险（尤其移动端/桌面端）？
-4. 是否有自动化测试覆盖关键回归面？
-5. 是否需要同步更新 `Doc` 主文档与归档说明？
+## Documentation discipline
 
-## 4. 文档治理原则
-
-1. `Doc/` 仅保留当前有效的“操作性文档”。
-2. 阶段性计划、已完成方案、被替代提案移动到 `Doc/history/`。
-3. 新增文档优先覆盖：
-   - 设计理念
-   - 架构与底层逻辑
-   - UIUX 规范
-   - 运营维护
-   - 测试质量
+1. Keep active implementation guidance in `Doc`.
+2. Move outdated material to `Doc/history`.
+3. Keep language direct concrete and implementation focused.

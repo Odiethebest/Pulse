@@ -1,136 +1,127 @@
-# Pulse 架构与底层逻辑
+# Pulse Architecture and Core Logic
 
-Last updated: 2026-03-31
+## Repository structure
 
-## 1. 代码结构（当前）
+1. `backend` holds orchestration agents domain models and service integration.
+2. `frontend` holds report rendering state management and client transport code.
+3. `Doc` holds active engineering documentation.
 
-```text
-Pulse/
-├─ backend/
-│  └─ src/main/java/com/odieyang/pulse/
-│     ├─ agent/         # Query/Fetch/Sentiment/Stance/Conflict/Aspect/FlipRisk/Synthesis/Critic
-│     ├─ orchestrator/  # PulseOrchestrator（主编排）
-│     ├─ model/         # PulseReport 及所有结构化输出模型
-│     ├─ service/       # TavilySearchService, AgentEventPublisher
-│     ├─ controller/    # PulseController, ApiHealthController
-│     └─ config/        # AI/CORS/SPA fallback 配置
-└─ frontend/
-   └─ src/
-      ├─ hooks/         # usePulse（状态机）
-      ├─ lib/           # api 适配、report normalize、mapper
-      ├─ components/    # 展示组件（桌面/移动分离）
-      └─ App.jsx        # 页面编排与流程切换
-```
+## Backend architecture
 
-## 2. 后端主链路（PulseOrchestrator）
+### Main modules
 
-`analyze(topic, runId, locale)` 核心流程：
+1. `agent`
+   Query planning fetch sentiment stance conflict aspect flip risk synthesis and critic modules.
+2. `orchestrator`
+   `PulseOrchestrator` controls run lifecycle concurrency and report assembly.
+3. `model`
+   Immutable records for all transport and report payloads.
+4. `service`
+   Tavily integration and event stream publishing.
+5. `controller`
+   HTTP endpoints for analyze stream and health.
+6. `config`
+   AI client CORS and SPA routing behavior.
 
-1. `QueryPlannerAgent.plan` 生成平台查询与 topic summary。
-2. Reddit/Twitter 并行抓取（`CompletableFuture`）。
-3. 抓取结果进入 `tightenCrawledPosts` 做相关性收紧：
-   - 强相关门槛：topic 命中或 anchor 命中数达标。
-   - 噪音硬拒绝：营销模板/壳页/过量 hashtag。
-   - 平台内按 relevance 排序并截断。
-4. 情感与结构分析并行：
-   - `SentimentAgent`（Reddit/Twitter）
-   - `StanceAgent`
-   - `ConflictAgent`
-   - `AspectAgent`
-   - `FlipRiskAgent`
-5. `SynthesisAgent` 生成初稿，`CriticAgent` 评分与建议。
-6. 低质量触发一次受控重写（rewrite guidance）。
-7. 生成 `claimEvidenceMap` 与 `quickTake`，并应用机械配对防护：
-   - `applyQuickTakeMechanicalPairingGuard`
-8. 抓取结果合并（`projectCrawledPosts`）：
-   - 全局 relevance 排序（替代旧 interleave 先来先上）
-   - dedupe 后取 Top-N（默认 16）
-   - 平台 cap（默认每平台最多 8，不足补齐）
-9. `buildTopicBuckets` 输出主题桶与分配方式（rule / llm / rule+llm / unassigned）。
-10. `buildCrawlerStats` 输出覆盖率与告警。
-11. 组装 `PulseReport` 返回，并写入执行事件轨迹。
+### Runtime flow
 
-## 3. 当前关键策略（落地状态）
+`PulseOrchestrator.analyze` executes this sequence.
 
-### 3.1 Crawler 相关性策略（已生效）
+1. Build query plan.
+2. Fetch Reddit and Twitter in parallel.
+3. Apply crawler relevance gate in `tightenCrawledPosts`.
+4. Run sentiment and structure analysis in parallel.
+5. Generate synthesis and run critic.
+6. Apply one controlled rewrite when quality thresholds fail.
+7. Build claim evidence map and quick take lines.
+8. Apply citation anti pattern guard to avoid mechanical pair selection.
+9. Merge crawled posts using global relevance ranking in `projectCrawledPosts`.
+10. Build topic buckets and crawler stats.
+11. Return final `PulseReport`.
 
-- `crawler.target-total=16`
-- `crawler.relevance.min-score=4`
-- `crawler.relevance.min-retain-count=2`
-- `crawler.relevance.min-retain-ratio=0.15`
-- `crawler.relevance.max-hashtags=2`
-- `crawler.relevance.platform-cap=8`
+### Crawler policy in production
 
-### 3.2 引用策略（已生效）
+1. Target total is 16.
+2. Relevance minimum score is 4.
+3. Minimum retain count is 2.
+4. Minimum retain ratio is 0.15.
+5. Maximum hashtags is 2.
+6. Per platform cap is 8.
 
-- `Frontline Verdict` 实际来源是 `quickTake[0] / quickTake[1]`。
-- 引用选择按 claim-quote 相关性 + evidenceWeight + 顺序分综合评分。
-- Guard 会修正固定偏移配对（如历史 `1+5 / 2+6` 模式）。
+## Frontend architecture
 
-## 4. 前端底层逻辑
+### State and transport
 
-### 4.1 状态机与传输
+1. `usePulse` owns run state with values idle loading complete and error.
+2. SSE stream opens before analyze request.
+3. Agent events append to graph state and live log.
+4. SSE closes when analyze completes or fails.
 
-`usePulse` 管理 `idle/loading/complete/error`：
+### API normalization
 
-1. 提交前重置状态。
-2. 先建立 SSE（`/api/pulse/stream`），再发 analyze。
-3. 增量接收 `AgentEvent`，累积 `agentEvents` 与 `liveText`。
-4. 分析结束后关闭 SSE，落地 `report + metrics`。
+`frontend/src/lib/api.js` normalizes backend payloads before render.
 
-### 4.2 API 归一化
+1. Normalizes `allPosts` `topicBuckets` and `crawlerStats`.
+2. Builds canonical citation source list.
+3. Applies safe fallback values for missing fields.
 
-`lib/api.js` 对后端 payload 做 normalize：
+### Report rendering layout
 
-- `allPosts / topicBuckets / crawlerStats` 标准化。
-- `citationSources` canonical 去重。
-- 兼容字段缺失的回退逻辑。
+1. `App.jsx` controls screen level layout and transitions.
+2. Loading view is isolated by device specific theater components.
+3. Report view includes verdict metrics controversy and integrity sections.
 
-### 4.3 渲染结构
+## API contract essentials
 
-- `App.jsx`：搜索 -> 加载态 theater -> 报告面板。
-- 加载态按端隔离：
-  - `AgentTheaterLoadingDesktop`
-  - `AgentTheaterLoadingMobile`
-- 报告核心区：
-  - Frontline Verdict
-  - Drama/Confidence
-  - Controversy Lenses
-  - Synthesis + Data Integrity
-
-## 5. API 契约（当前）
-
-主接口：
+### Endpoints
 
 1. `POST /api/pulse/analyze`
 2. `GET /api/pulse/stream`
 3. `GET /api/actuator/health`
 
-兼容路由仍可用：`/pulse/analyze`, `/pulse/stream`
+Legacy compatibility endpoints remain available.
 
-前端依赖的核心响应字段（必须保持兼容）：
+1. `POST /pulse/analyze`
+2. `GET /pulse/stream`
 
-- `quickTake`
-- `allPosts`
-- `topicBuckets`
-- `crawlerStats`
-- `claimEvidenceMap`
-- `claimAnnotations`
-- `riskFlags`
-- `revisionAnchors`
+### Fields required by frontend
 
-## 6. 配置与耦合点
+1. `quickTake`
+2. `allPosts`
+3. `topicBuckets`
+4. `crawlerStats`
+5. `claimEvidenceMap`
+6. `claimAnnotations`
+7. `riskFlags`
+8. `revisionAnchors`
 
-后端配置文件：`backend/src/main/resources/application.properties`
+## Configuration and packaging
 
-关键点：
+### Runtime configuration
 
-- OpenAI：`OPENAI_API_KEY`
-- Tavily：`TAVILY_API_KEY`, `TAVILY_MAX_RESULTS`
-- Crawler 参数：`CRAWLER_*` 系列
-- 质量阈值：`debate.confidence.threshold`, `debate.quality.*`
+Primary file is `backend/src/main/resources/application.properties`.
 
-打包耦合：
+Required keys:
 
-- `backend/pom.xml` 通过 `frontend-maven-plugin` 在 `prepare-package` 阶段执行前端 `npm install + npm run build`。
-- 构建后 `frontend/dist` 被复制到后端静态目录，形成单体可部署产物。
+1. `OPENAI_API_KEY`
+2. `TAVILY_API_KEY`
+
+Important crawler and quality settings:
+
+1. `CRAWLER_TARGET_TOTAL`
+2. `CRAWLER_RELEVANCE_MIN_SCORE`
+3. `CRAWLER_RELEVANCE_PLATFORM_CAP`
+4. `debate.confidence.threshold`
+5. `debate.quality.min-density`
+6. `debate.quality.min-claim-coverage`
+
+### Build integration
+
+`backend/pom.xml` runs frontend install and build during backend package.
+
+1. Installs Node and npm.
+2. Runs frontend dependency install.
+3. Builds frontend assets.
+4. Copies `frontend/dist` into backend static output.
+
+Result is one deployable backend artifact with embedded frontend.

@@ -1,141 +1,128 @@
-# Pulse 运营与维护手册
+# Pulse Operations and Maintenance
 
-Last updated: 2026-03-31
-
-## 1. 运行前提
-
-基础依赖：
+## Runtime requirements
 
 1. Java 21
-2. Node.js 22.12+
-3. OpenAI API Key
-4. Tavily API Key
+2. Node.js 22.12 or newer
+3. OpenAI API key
+4. Tavily API key
 
-关键配置文件：
+Primary config files:
 
-- `backend/src/main/resources/application.properties`
-- `backend/.env`（本地）
+1. `backend/src/main/resources/application.properties`
+2. `backend/.env` for local development
 
-## 2. 日常运行命令
+## Standard run commands
 
-本地开发：
+### Local development
 
-1. Backend：`cd backend && ./mvnw spring-boot:run`
-2. Frontend：`cd frontend && npm run dev`
+1. `cd backend && ./mvnw spring-boot:run`
+2. `cd frontend && npm run dev`
 
-生产构建（单体产物）：
+### Production package run
 
 1. `cd backend && ./mvnw clean package`
 2. `cd backend/target && java -jar pulse-*.jar`
 
-说明：
+Backend packaging includes frontend build and static asset copy.
 
-- Maven 构建阶段会自动执行前端 `npm install` 与 `npm run build`，并将 `frontend/dist` 复制到后端静态目录。
+## Health checks
 
-## 3. 健康检查与观测点
-
-### 3.1 HTTP 检查
+### HTTP checks
 
 1. `GET /api/actuator/health`
 2. `POST /api/pulse/analyze`
 3. `GET /api/pulse/stream`
 
-### 3.2 关键日志信号（后端）
+### Log signals to monitor
 
-- `Starting analysis for topic...`
-- `Relevance filter tightened ...`
-- `QuickTake Phase2 guard adjusted citation pairing ...`
-- `Analysis complete ...`
-- `... failed and fallback is used ...`
+1. `Starting analysis for topic`
+2. `Relevance filter tightened`
+3. `QuickTake Phase2 guard adjusted citation pairing`
+4. `Analysis complete`
+5. `failed and fallback is used`
 
-### 3.3 关键业务指标（报告内）
+### Report level health indicators
 
-- `crawlerStats.coveragePercent`
-- `crawlerStats.coverageLevel`
-- `crawlerStats.unassignedCount`
-- `crawlerStats.redditCount / twitterCount`
+1. `crawlerStats.coveragePercent`
+2. `crawlerStats.coverageLevel`
+3. `crawlerStats.unassignedCount`
+4. `crawlerStats.redditCount`
+5. `crawlerStats.twitterCount`
 
-## 4. 参数治理（当前推荐基线）
+## Current configuration baseline
 
-Crawler 质量参数：
+Crawler baseline:
 
-- `CRAWLER_TARGET_TOTAL=16`
-- `TAVILY_MAX_RESULTS=4`
-- `CRAWLER_RELEVANCE_MIN_SCORE=4`
-- `CRAWLER_RELEVANCE_MIN_RETAIN_COUNT=2`
-- `CRAWLER_RELEVANCE_MIN_RETAIN_RATIO=0.15`
-- `CRAWLER_RELEVANCE_MAX_HASHTAGS=2`
-- `CRAWLER_RELEVANCE_PLATFORM_CAP=8`
+1. `CRAWLER_TARGET_TOTAL=16`
+2. `TAVILY_MAX_RESULTS=4`
+3. `CRAWLER_RELEVANCE_MIN_SCORE=4`
+4. `CRAWLER_RELEVANCE_MIN_RETAIN_COUNT=2`
+5. `CRAWLER_RELEVANCE_MIN_RETAIN_RATIO=0.15`
+6. `CRAWLER_RELEVANCE_MAX_HASHTAGS=2`
+7. `CRAWLER_RELEVANCE_PLATFORM_CAP=8`
 
-质量门控参数：
+Quality baseline:
 
-- `debate.confidence.threshold=60`
-- `debate.quality.min-density=55`
-- `debate.quality.min-claim-coverage=60`
+1. `debate.confidence.threshold=60`
+2. `debate.quality.min-density=55`
+3. `debate.quality.min-claim-coverage=60`
 
-## 5. 常见故障与处置
+## Incident handling guide
 
-### 5.1 Tavily 返回质量差或配额受限
+### Tavily quality or quota issues
 
-症状：
+Symptoms:
 
-- 抓取样本不足、噪音升高、`coverageLevel=warning/critical`
+1. Low coverage
+2. High noise ratio
+3. Frequent warning or critical coverage level
 
-处理：
+Actions:
 
-1. 检查 `TAVILY_API_KEY` 与配额。
-2. 检查 `TAVILY_MAX_RESULTS` 和 query 粒度。
-3. 观察 `hardRejected/strictRejected` 日志判断是否门槛过严。
+1. Validate Tavily key and quota.
+2. Check `TAVILY_MAX_RESULTS` and query quality.
+3. Inspect `hardRejected` and `strictRejected` logs.
 
-### 5.2 OpenAI 调用失败或超时
+### OpenAI timeout or model failures
 
-症状：
+Symptoms:
 
-- 分析失败、或 fallback 输出增多。
+1. Analyze failure
+2. Frequent fallback output
 
-处理：
+Actions:
 
-1. 检查 `OPENAI_API_KEY` 与模型可用性。
-2. 验证网络出口与请求限流。
-3. 保留降级策略，不直接关闭 Critic/Rewrite 流程。
+1. Validate OpenAI key and model access.
+2. Verify outbound network reliability.
+3. Keep fallback behavior enabled during mitigation.
 
-### 5.3 前端连接异常（SSE/接口）
+### Frontend SSE or API transport issues
 
-症状：
+Symptoms:
 
-- 加载态卡住、日志中断、状态落入 error。
+1. Loading view stalls
+2. Event stream stops
+3. UI status moves to error
 
-处理：
+Actions:
 
-1. 检查 `/api/pulse/stream` 是否可达。
-2. 检查 `VITE_API_BASE` 与代理配置。
-3. 检查浏览器控制台 CORS/网络错误。
+1. Verify `/api/pulse/stream` availability.
+2. Verify `VITE_API_BASE` and proxy config.
+3. Check browser console for CORS and network errors.
 
-## 6. 发布与回归最小门禁
+## Release gate
 
-发布前至少执行：
+Run all checks before release:
 
-1. 后端：`cd backend && ./mvnw test`
-2. 前端：`cd frontend && npm test && npm run build`
-3. 手工 smoke：
-   - `/api/actuator/health`
-   - 一次真实 query 全流程
-   - 移动端报告页底部不遮挡
+1. `cd backend && ./mvnw test`
+2. `cd frontend && npm test`
+3. `cd frontend && npm run build`
+4. Manual smoke run with one real query
+5. Mobile report check for bottom overlap regressions
 
-## 7. 容量与成本策略
+## Cost and capacity guidance
 
-1. 优先限制候选规模（`TAVILY_MAX_RESULTS`）而不是事后大量丢弃。
-2. 通过 relevance gate 保留高价值样本，减少低质量 token 消耗。
-3. 对高峰场景采用“先可用后完美”的降级策略，保证服务连续性。
-
-## 8. 路线图：新闻源扩展（待实施）
-
-当前状态：
-
-- 方案已归档于 `Doc/history/news-source-strategy.md`（原文）。
-
-后续建议：
-
-1. 先做 `NewsAgent`（Search）再做 `NewsExtractAgent`（Extract）。
-2. 仅白名单域名 + 限预算 + 可观测。
-3. 以“可降级不阻塞主链路”为硬约束接入 orchestrator。
+1. Control candidate size at fetch stage.
+2. Keep strict relevance filtering to reduce low value downstream cost.
+3. Prioritize service continuity with graceful degradation under load.
