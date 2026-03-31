@@ -508,6 +508,39 @@ class PulseOrchestratorV2Tests {
                 "Strongly relevant posts should remain after tightening");
     }
 
+    @Test
+    void analyzeShouldPreferGlobalTopRelevanceInsteadOfArrivalOrder() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new ArrivalOrderRedditAgent(),
+                new ArrivalOrderTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "crawlerTargetTotal", 4);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinSample", 1);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinScore", 0);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainCount", 1);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevanceMinRetainRatio", 0.10);
+        ReflectionTestUtils.setField(orchestrator, "crawlerRelevancePlatformCap", 8);
+
+        PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+
+        assertNotNull(report.allPosts());
+        assertEquals(4, report.allPosts().size(), "Should keep target-sized global top posts");
+        assertTrue(report.allPosts().stream().anyMatch(post ->
+                        "https://x.com/high-priority".equals(post.url())),
+                "High-priority late-arrival post should be retained by global ranking");
+        assertEquals("https://x.com/high-priority", report.allPosts().getFirst().url(),
+                "Global ranking should place strongest relevance item first");
+    }
+
     private boolean containsCitationPair(String line, int left, int right) {
         if (line == null || line.isBlank()) {
             return false;
@@ -758,6 +791,65 @@ class PulseOrchestratorV2Tests {
                     "https://x.com/weak-2"
             ));
             return new RawPosts("twitter", posts);
+        }
+    }
+
+    private static class ArrivalOrderRedditAgent extends RedditAgent {
+        ArrivalOrderRedditAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public RawPosts fetch(List<String> queries) {
+            return new RawPosts("reddit", List.of(
+                    new RawPost(
+                            "Taylor friendship pulse",
+                            "Ed Sheeran and Taylor fans discuss friendship reactions.",
+                            "https://reddit.com/arrival-1"
+                    ),
+                    new RawPost(
+                            "Debate note",
+                            "Friendship debate chatter among fans this week.",
+                            "https://reddit.com/arrival-2"
+                    ),
+                    new RawPost(
+                            "Weekly update",
+                            "Taylor and Ed Sheeran friendship thread summary.",
+                            "https://reddit.com/arrival-3"
+                    ),
+                    new RawPost(
+                            "Community check",
+                            "Fans keep debating this friendship topic online.",
+                            "https://reddit.com/arrival-4"
+                    )
+            ));
+        }
+    }
+
+    private static class ArrivalOrderTwitterAgent extends TwitterAgent {
+        ArrivalOrderTwitterAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public RawPosts fetch(List<String> queries) {
+            return new RawPosts("twitter", List.of(
+                    new RawPost(
+                            "General friendship signal",
+                            "Taylor and Ed community reaction keeps moving.",
+                            "https://x.com/arrival-1"
+                    ),
+                    new RawPost(
+                            "General debate signal",
+                            "Debate and friendship comments continue across X.",
+                            "https://x.com/arrival-2"
+                    ),
+                    new RawPost(
+                            "Taylor Swift and Ed Sheeran friendship debate",
+                            "Taylor Swift and Ed Sheeran friendship debate draws detailed breakdown from fans and media.",
+                            "https://x.com/high-priority"
+                    )
+            ));
         }
     }
 

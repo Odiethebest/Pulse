@@ -242,7 +242,14 @@ public class PulseOrchestrator {
             int flipRiskScore = clampScore(flipRiskResult.flipRiskScore());
             List<ControversyTopic> controversyTopics = chooseControversyTopics(aspectResult, redditSentiment, twitterSentiment);
             int targetTotal = Math.max(1, crawlerTargetTotal);
-            CrawlProjection crawlProjection = projectCrawledPosts(reddit, twitter, targetTotal);
+            CrawlProjection crawlProjection = projectCrawledPosts(
+                    reddit,
+                    twitter,
+                    targetTotal,
+                    topic,
+                    plan.topicSummary(),
+                    mergePlannedQueries(plan)
+            );
             List<TopicBucket> topicBuckets = buildTopicBuckets(controversyTopics, crawlProjection.allPosts());
             int redditCount = sizeOfPosts(reddit);
             int twitterCount = sizeOfPosts(twitter);
@@ -1381,20 +1388,80 @@ public class PulseOrchestrator {
         return sb.toString();
     }
 
-    private CrawlProjection projectCrawledPosts(RawPosts reddit, RawPosts twitter, int targetTotal) {
+    private CrawlProjection projectCrawledPosts(
+            RawPosts reddit,
+            RawPosts twitter,
+            int targetTotal,
+            String topic,
+            String topicSummary,
+            List<String> plannedQueries
+    ) {
         List<CrawledPost> redditPosts = toCrawledPosts(reddit);
         List<CrawledPost> twitterPosts = toCrawledPosts(twitter);
-        List<CrawledPost> merged = interleavePosts(redditPosts, twitterPosts);
+        List<String> anchors = buildRelevanceAnchors(topic, topicSummary, plannedQueries);
+        String normalizedTopic = normalizeForMatch(topic);
 
-        LinkedHashMap<String, CrawledPost> deduped = new LinkedHashMap<>();
-        for (CrawledPost post : merged) {
+        List<ScoredCrawledPost> scored = new ArrayList<>();
+        for (int i = 0; i < redditPosts.size(); i++) {
+            CrawledPost post = redditPosts.get(i);
+            scored.add(new ScoredCrawledPost(post, crawledPostRelevanceScore(post, normalizedTopic, anchors), i));
+        }
+        for (int i = 0; i < twitterPosts.size(); i++) {
+            CrawledPost post = twitterPosts.get(i);
+            scored.add(new ScoredCrawledPost(post, crawledPostRelevanceScore(post, normalizedTopic, anchors), i));
+        }
+
+        LinkedHashMap<String, ScoredCrawledPost> deduped = new LinkedHashMap<>();
+        for (ScoredCrawledPost candidate : scored) {
+            CrawledPost post = candidate.post();
             String key = crawledPostDedupKey(post);
-            deduped.putIfAbsent(key, post);
+            ScoredCrawledPost previous = deduped.get(key);
+            if (previous == null
+                    || candidate.relevanceScore() > previous.relevanceScore()
+                    || (candidate.relevanceScore() == previous.relevanceScore()
+                    && candidate.sourceOrder() < previous.sourceOrder())) {
+                deduped.put(key, candidate);
+            }
         }
 
         int dedupedCount = deduped.size();
-        List<CrawledPost> capped = deduped.values().stream()
-                .limit(targetTotal)
+        int safeTarget = Math.max(1, targetTotal);
+        int platformCap = Math.max(1, crawlerRelevancePlatformCap);
+        List<ScoredCrawledPost> ranked = deduped.values().stream()
+                .sorted(Comparator
+                        .comparingInt(ScoredCrawledPost::relevanceScore).reversed()
+                        .thenComparingInt(ScoredCrawledPost::sourceOrder))
+                .toList();
+
+        List<ScoredCrawledPost> selected = new ArrayList<>();
+        List<ScoredCrawledPost> overflow = new ArrayList<>();
+        Map<String, Integer> countsByPlatform = new LinkedHashMap<>();
+
+        for (ScoredCrawledPost candidate : ranked) {
+            if (selected.size() >= safeTarget) {
+                break;
+            }
+            String platform = normalizePlatformKey(candidate.post().platform());
+            int current = countsByPlatform.getOrDefault(platform, 0);
+            if (current < platformCap) {
+                selected.add(candidate);
+                countsByPlatform.put(platform, current + 1);
+            } else {
+                overflow.add(candidate);
+            }
+        }
+
+        if (selected.size() < safeTarget) {
+            for (ScoredCrawledPost candidate : overflow) {
+                if (selected.size() >= safeTarget) {
+                    break;
+                }
+                selected.add(candidate);
+            }
+        }
+
+        List<CrawledPost> capped = selected.stream()
+                .map(ScoredCrawledPost::post)
                 .toList();
         return new CrawlProjection(capped, dedupedCount);
     }
@@ -1419,20 +1486,6 @@ public class PulseOrchestrator {
             ));
         }
         return output;
-    }
-
-    private List<CrawledPost> interleavePosts(List<CrawledPost> first, List<CrawledPost> second) {
-        List<CrawledPost> merged = new ArrayList<>(first.size() + second.size());
-        int max = Math.max(first.size(), second.size());
-        for (int i = 0; i < max; i++) {
-            if (i < first.size()) {
-                merged.add(first.get(i));
-            }
-            if (i < second.size()) {
-                merged.add(second.get(i));
-            }
-        }
-        return merged;
     }
 
     private String crawledPostDedupKey(CrawledPost post) {
@@ -1625,6 +1678,35 @@ public class PulseOrchestrator {
             score -= 2;
         }
         return score;
+    }
+
+    private int crawledPostRelevanceScore(CrawledPost post, String normalizedTopic, List<String> anchors) {
+        if (post == null) {
+            return 0;
+        }
+        RawPost proxy = new RawPost(post.title(), post.snippet(), post.url());
+        return postRelevanceScore(proxy, normalizedTopic, anchors);
+    }
+
+    private String normalizePlatformKey(String platform) {
+        if (platform == null || platform.isBlank()) {
+            return "unknown";
+        }
+        return platform.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private List<String> mergePlannedQueries(QueryPlan plan) {
+        List<String> merged = new ArrayList<>();
+        if (plan == null) {
+            return merged;
+        }
+        if (plan.redditQueries() != null) {
+            merged.addAll(plan.redditQueries());
+        }
+        if (plan.twitterQueries() != null) {
+            merged.addAll(plan.twitterQueries());
+        }
+        return merged;
     }
 
     private int anchorHitCount(String combined, List<String> anchors) {
@@ -2157,6 +2239,12 @@ public class PulseOrchestrator {
     private record ScoredRawPost(
             RawPost post,
             int score
+    ) {}
+
+    private record ScoredCrawledPost(
+            CrawledPost post,
+            int relevanceScore,
+            int sourceOrder
     ) {}
 
     private record EvidenceQuote(
