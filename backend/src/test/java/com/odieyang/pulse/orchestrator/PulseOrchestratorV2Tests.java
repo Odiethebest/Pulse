@@ -6,12 +6,14 @@ import com.odieyang.pulse.service.AgentEventPublisher;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -259,6 +261,38 @@ class PulseOrchestratorV2Tests {
     }
 
     @Test
+    void quickTakeShouldRepairMechanicalPairingWhenFirstTwoClaimsAlignByOffset() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FixedRedditAgent(),
+                new FixedTwitterAgent(),
+                new LegacyPatternSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(82),
+                new AgentEventPublisher()
+        );
+
+        PulseReport report = orchestrator.analyze("Taylor Swift and Ed Sheeran friendship debate");
+        assertTrue(report.quickTake().size() >= 2);
+
+        String first = report.quickTake().get(0);
+        String second = report.quickTake().get(1);
+        List<Integer> firstPair = extractCitationPair(first);
+        List<Integer> secondPair = extractCitationPair(second);
+
+        assertEquals(2, firstPair.size(), "Expected first quickTake claim to carry two citations");
+        assertEquals(2, secondPair.size(), "Expected second quickTake claim to carry two citations");
+        assertFalse(isMechanicalOffsetPairing(firstPair, secondPair),
+                "Expected Phase2 guard to break fixed-offset pairing in first two quickTake claims");
+        assertFalse(containsCitationPair(second, 2, 6),
+                "Expected guard to replace legacy [Q2][Q6] in second quickTake line");
+    }
+
+    @Test
     void analyzeShouldEmitPhase3CrawlerSignalsAndRankedBucketPosts() {
         var orchestrator = buildOrchestrator(
                 new FixedQueryPlannerAgent(),
@@ -343,6 +377,37 @@ class PulseOrchestratorV2Tests {
         String a = "[Q" + left + "]";
         String b = "[Q" + right + "]";
         return line.contains(a + " " + b) || line.contains(b + " " + a);
+    }
+
+    private List<Integer> extractCitationPair(String line) {
+        if (line == null || line.isBlank()) {
+            return List.of();
+        }
+        LinkedHashSet<Integer> uniqueIds = new LinkedHashSet<>();
+        Matcher matcher = Pattern.compile("\\[Q(\\d+)]").matcher(line);
+        while (matcher.find() && uniqueIds.size() < 2) {
+            uniqueIds.add(Integer.parseInt(matcher.group(1)));
+        }
+        if (uniqueIds.size() < 2) {
+            return List.of();
+        }
+        List<Integer> pair = new ArrayList<>(uniqueIds);
+        pair.sort(Integer::compareTo);
+        return pair;
+    }
+
+    private boolean isMechanicalOffsetPairing(List<Integer> firstPair, List<Integer> secondPair) {
+        if (firstPair == null || secondPair == null || firstPair.size() < 2 || secondPair.size() < 2) {
+            return false;
+        }
+        int firstOffset = firstPair.get(1) - firstPair.get(0);
+        int secondOffset = secondPair.get(1) - secondPair.get(0);
+        if (firstOffset < 2 || firstOffset != secondOffset) {
+            return false;
+        }
+        int lowerDelta = secondPair.get(0) - firstPair.get(0);
+        int upperDelta = secondPair.get(1) - firstPair.get(1);
+        return Math.abs(lowerDelta) <= 2 && Math.abs(upperDelta) <= 2 && (lowerDelta != 0 || upperDelta != 0);
     }
 
     private PulseOrchestrator buildOrchestrator(
@@ -666,6 +731,83 @@ class PulseOrchestratorV2Tests {
                     ),
                     new CampDistribution(0.32, 0.52, 0.16),
                     List.of(new ControversyTopic("consensus volatility", 66, "Trust concerns"))
+            );
+        }
+    }
+
+    private static class LegacyPatternSentimentAgent extends SentimentAgent {
+        LegacyPatternSentimentAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public SentimentResult analyze(RawPosts rawPosts) {
+            if ("reddit".equals(rawPosts.platform())) {
+                return new SentimentResult(
+                        "reddit",
+                        0.55,
+                        0.35,
+                        0.10,
+                        List.of("pricing flashpoint"),
+                        List.of(
+                                new Quote(
+                                        "Supporters defend Taylor Swift and Ed Sheeran friendship while critics push back and cautious observers wait.",
+                                        "https://reddit.com/r/1",
+                                        "positive",
+                                        "support",
+                                        0.96
+                                ),
+                                new Quote(
+                                        "The pricing flashpoint moved into a fierce dispute stage around ticket costs.",
+                                        "https://reddit.com/r/2",
+                                        "neutral",
+                                        "neutral",
+                                        0.94
+                                ),
+                                new Quote(
+                                        "Consensus may flip quickly if new evidence appears.",
+                                        "https://reddit.com/r/3",
+                                        "negative",
+                                        "oppose",
+                                        0.78
+                                )
+                        ),
+                        new CampDistribution(0.58, 0.30, 0.12),
+                        List.of(new ControversyTopic("pricing flashpoint", 70, "Price fairness fight"))
+                );
+            }
+
+            return new SentimentResult(
+                    "twitter",
+                    0.33,
+                    0.50,
+                    0.17,
+                    List.of("pricing flashpoint"),
+                    List.of(
+                            new Quote(
+                                    "General reaction post with little detail.",
+                                    "https://x.com/1",
+                                    "neutral",
+                                    "neutral",
+                                    0.22
+                            ),
+                            new Quote(
+                                    "X users defend Taylor and Ed friendship as vocal pushback grows among critics.",
+                                    "https://x.com/2",
+                                    "positive",
+                                    "support",
+                                    0.92
+                            ),
+                            new Quote(
+                                    "X calls pricing the central flashpoint in this fierce dispute stage.",
+                                    "https://x.com/3",
+                                    "negative",
+                                    "oppose",
+                                    0.91
+                            )
+                    ),
+                    new CampDistribution(0.32, 0.52, 0.16),
+                    List.of(new ControversyTopic("pricing flashpoint", 66, "Trust concerns"))
             );
         }
     }

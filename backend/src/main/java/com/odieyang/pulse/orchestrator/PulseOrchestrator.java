@@ -261,6 +261,11 @@ public class PulseOrchestrator {
                     platformDiff,
                     evidenceQuotes
             );
+            claimEvidenceMap = applyQuickTakeMechanicalPairingGuard(
+                    claimEvidenceMap,
+                    evidenceQuotes,
+                    evidenceUrls
+            );
             List<RevisionAnchor> revisionAnchors = buildRevisionAnchors(revisionDelta, claimEvidenceMap);
             List<ClaimAnnotation> claimAnnotations = buildClaimAnnotations(critique, revisionAnchors);
             List<RiskFlag> riskFlags = buildRiskFlags(critique, flipSignals, claimEvidenceMap);
@@ -748,6 +753,56 @@ public class PulseOrchestrator {
                 .toList();
     }
 
+    private List<ClaimEvidenceLink> applyQuickTakeMechanicalPairingGuard(
+            List<ClaimEvidenceLink> claimEvidenceMap,
+            List<EvidenceQuote> evidenceQuotes,
+            List<String> allEvidenceUrls
+    ) {
+        if (claimEvidenceMap == null || claimEvidenceMap.size() < 2) {
+            return claimEvidenceMap;
+        }
+        if (evidenceQuotes == null || evidenceQuotes.isEmpty()) {
+            return claimEvidenceMap;
+        }
+
+        Map<String, Integer> citationIndexByUrl = buildCitationIndexByUrl(allEvidenceUrls);
+        if (citationIndexByUrl.isEmpty()) {
+            return claimEvidenceMap;
+        }
+
+        ClaimEvidenceLink first = claimEvidenceMap.get(0);
+        ClaimEvidenceLink second = claimEvidenceMap.get(1);
+        CitationPair firstPair = extractCitationPair(first.evidenceUrls(), citationIndexByUrl);
+        CitationPair secondPair = extractCitationPair(second.evidenceUrls(), citationIndexByUrl);
+
+        if (!isMechanicalCitationPairing(firstPair, secondPair)) {
+            return claimEvidenceMap;
+        }
+
+        List<String> replacement = pickAlternativeUrlsForSecondClaim(
+                first,
+                second,
+                evidenceQuotes,
+                citationIndexByUrl
+        );
+        CitationPair replacementPair = extractCitationPair(replacement, citationIndexByUrl);
+        if (replacement == null || replacement.isEmpty()
+                || isMechanicalCitationPairing(firstPair, replacementPair)) {
+            return claimEvidenceMap;
+        }
+
+        List<String> current = second.evidenceUrls() == null ? List.of() : second.evidenceUrls();
+        if (new LinkedHashSet<>(replacement).equals(new LinkedHashSet<>(current))) {
+            return claimEvidenceMap;
+        }
+
+        List<ClaimEvidenceLink> adjusted = new ArrayList<>(claimEvidenceMap);
+        adjusted.set(1, new ClaimEvidenceLink(second.claimId(), second.claim(), replacement));
+        log.info("QuickTake Phase2 guard adjusted citation pairing from {} to {} for claim {}",
+                secondPair, replacementPair, second.claimId());
+        return adjusted;
+    }
+
     private String finalizeSynthesis(
             String synthesis,
             String coreEntity,
@@ -903,6 +958,48 @@ public class PulseOrchestrator {
             return List.of();
         }
 
+        List<ScoredEvidenceQuote> scored = rankEvidenceForClaim(claim, evidenceQuotes, globallyUsedUrls);
+        if (scored.isEmpty()) {
+            return List.of();
+        }
+
+        int targetCount = evidenceQuotes.size() >= 5 ? QUICK_TAKE_MAX_CITATIONS_PER_CLAIM : 1;
+        List<ScoredEvidenceQuote> unused = scored.stream()
+                .filter(candidate -> globallyUsedUrls == null || !globallyUsedUrls.contains(candidate.quote().url()))
+                .toList();
+        List<ScoredEvidenceQuote> primaryPool = unused.isEmpty() ? scored : unused;
+        LinkedHashSet<String> selected = new LinkedHashSet<>();
+        ScoredEvidenceQuote primary = primaryPool.getFirst();
+        selected.add(primary.quote().url());
+
+        if (targetCount > 1) {
+            addDifferentPlatformCandidate(selected, unused, primary.quote().platform());
+            if (selected.size() < targetCount) {
+                addDifferentPlatformCandidate(selected, scored, primary.quote().platform());
+            }
+        }
+
+        fillSelectedFromPool(selected, unused, targetCount);
+        fillSelectedFromPool(selected, scored, targetCount);
+
+        if (selected.isEmpty()) {
+            selected.add(evidenceQuotes.getFirst().url());
+        }
+        if (globallyUsedUrls != null) {
+            globallyUsedUrls.addAll(selected);
+        }
+        return new ArrayList<>(selected);
+    }
+
+    private List<ScoredEvidenceQuote> rankEvidenceForClaim(
+            String claim,
+            List<EvidenceQuote> evidenceQuotes,
+            Set<String> globallyUsedUrls
+    ) {
+        if (evidenceQuotes == null || evidenceQuotes.isEmpty()) {
+            return List.of();
+        }
+
         List<String> claimKeywords = claimKeywords(claim);
         List<ScoredEvidenceQuote> scored = new ArrayList<>();
         for (int i = 0; i < evidenceQuotes.size(); i++) {
@@ -910,7 +1007,8 @@ public class PulseOrchestrator {
             int relevanceScore = claimRelevanceScore(claimKeywords, quote);
             int evidenceScore = clampScore((int) Math.round(quote.evidenceWeight() * 100.0));
             int orderScore = recencyScore(i, evidenceQuotes.size());
-            int noveltyScore = globallyUsedUrls.contains(quote.url()) ? 0 : 10;
+            boolean alreadyUsed = globallyUsedUrls != null && globallyUsedUrls.contains(quote.url());
+            int noveltyScore = alreadyUsed ? 0 : 10;
             double priorityScore = relevanceScore * 0.55
                     + evidenceScore * 0.25
                     + orderScore * 0.15
@@ -939,33 +1037,184 @@ public class PulseOrchestrator {
             }
             return Integer.compare(right.orderScore(), left.orderScore());
         });
+        return scored;
+    }
 
-        int targetCount = evidenceQuotes.size() >= 5 ? QUICK_TAKE_MAX_CITATIONS_PER_CLAIM : 1;
-        List<ScoredEvidenceQuote> unused = scored.stream()
-                .filter(candidate -> globallyUsedUrls == null || !globallyUsedUrls.contains(candidate.quote().url()))
-                .toList();
-        List<ScoredEvidenceQuote> primaryPool = unused.isEmpty() ? scored : unused;
-        LinkedHashSet<String> selected = new LinkedHashSet<>();
-        ScoredEvidenceQuote primary = primaryPool.getFirst();
-        selected.add(primary.quote().url());
+    private List<String> pickAlternativeUrlsForSecondClaim(
+            ClaimEvidenceLink firstClaim,
+            ClaimEvidenceLink secondClaim,
+            List<EvidenceQuote> evidenceQuotes,
+            Map<String, Integer> citationIndexByUrl
+    ) {
+        if (secondClaim == null || secondClaim.evidenceUrls() == null || secondClaim.evidenceUrls().isEmpty()) {
+            return List.of();
+        }
+        CitationPair firstPair = extractCitationPair(firstClaim == null ? List.of() : firstClaim.evidenceUrls(), citationIndexByUrl);
+        if (firstPair == null) {
+            return secondClaim.evidenceUrls();
+        }
 
-        if (targetCount > 1) {
-            addDifferentPlatformCandidate(selected, unused, primary.quote().platform());
-            if (selected.size() < targetCount) {
-                addDifferentPlatformCandidate(selected, scored, primary.quote().platform());
+        List<ScoredEvidenceQuote> ranked = rankEvidenceForClaim(secondClaim.claim(), evidenceQuotes, null);
+        if (ranked.size() < 2) {
+            return secondClaim.evidenceUrls();
+        }
+
+        LinkedHashMap<String, Double> scoreByUrl = new LinkedHashMap<>();
+        LinkedHashMap<String, String> platformByUrl = new LinkedHashMap<>();
+        for (ScoredEvidenceQuote candidate : ranked) {
+            String url = candidate.quote().url();
+            if (url == null || url.isBlank()) {
+                continue;
+            }
+            scoreByUrl.putIfAbsent(url, candidate.priorityScore());
+            platformByUrl.putIfAbsent(url, candidate.quote().platform());
+        }
+
+        if (scoreByUrl.size() < 2) {
+            return secondClaim.evidenceUrls();
+        }
+
+        Set<String> firstClaimUrls = firstClaim == null || firstClaim.evidenceUrls() == null
+                ? Set.of()
+                : new LinkedHashSet<>(firstClaim.evidenceUrls());
+        List<String> candidates = new ArrayList<>(scoreByUrl.keySet());
+        List<String> disjointPair = findBestNonMechanicalPair(
+                firstPair,
+                firstClaimUrls,
+                candidates,
+                scoreByUrl,
+                platformByUrl,
+                citationIndexByUrl,
+                true
+        );
+        if (!disjointPair.isEmpty()) {
+            return disjointPair;
+        }
+
+        List<String> fallbackPair = findBestNonMechanicalPair(
+                firstPair,
+                firstClaimUrls,
+                candidates,
+                scoreByUrl,
+                platformByUrl,
+                citationIndexByUrl,
+                false
+        );
+        if (!fallbackPair.isEmpty()) {
+            return fallbackPair;
+        }
+
+        for (String candidate : candidates) {
+            if (!firstClaimUrls.contains(candidate)) {
+                return List.of(candidate);
             }
         }
+        return secondClaim.evidenceUrls();
+    }
 
-        fillSelectedFromPool(selected, unused, targetCount);
-        fillSelectedFromPool(selected, scored, targetCount);
+    private List<String> findBestNonMechanicalPair(
+            CitationPair firstPair,
+            Set<String> firstClaimUrls,
+            List<String> candidates,
+            Map<String, Double> scoreByUrl,
+            Map<String, String> platformByUrl,
+            Map<String, Integer> citationIndexByUrl,
+            boolean requireNoOverlapWithFirstClaim
+    ) {
+        double bestCombinedScore = Double.NEGATIVE_INFINITY;
+        List<String> bestPair = List.of();
+        for (int i = 0; i < candidates.size(); i++) {
+            for (int j = i + 1; j < candidates.size(); j++) {
+                String left = candidates.get(i);
+                String right = candidates.get(j);
+                if (requireNoOverlapWithFirstClaim
+                        && (firstClaimUrls.contains(left) || firstClaimUrls.contains(right))) {
+                    continue;
+                }
 
-        if (selected.isEmpty()) {
-            selected.add(evidenceQuotes.getFirst().url());
+                CitationPair candidatePair = extractCitationPair(List.of(left, right), citationIndexByUrl);
+                if (candidatePair == null || isMechanicalCitationPairing(firstPair, candidatePair)) {
+                    continue;
+                }
+
+                double combinedScore = scoreByUrl.getOrDefault(left, 0.0) + scoreByUrl.getOrDefault(right, 0.0);
+                if (!firstClaimUrls.contains(left)) {
+                    combinedScore += 1.0;
+                }
+                if (!firstClaimUrls.contains(right)) {
+                    combinedScore += 1.0;
+                }
+                String leftPlatform = platformByUrl.get(left);
+                String rightPlatform = platformByUrl.get(right);
+                if (leftPlatform != null && rightPlatform != null && !leftPlatform.equalsIgnoreCase(rightPlatform)) {
+                    combinedScore += 2.0;
+                }
+
+                if (combinedScore > bestCombinedScore) {
+                    bestCombinedScore = combinedScore;
+                    bestPair = List.of(left, right);
+                }
+            }
         }
-        if (globallyUsedUrls != null) {
-            globallyUsedUrls.addAll(selected);
+        return bestPair;
+    }
+
+    private Map<String, Integer> buildCitationIndexByUrl(List<String> allEvidenceUrls) {
+        if (allEvidenceUrls == null || allEvidenceUrls.isEmpty()) {
+            return Map.of();
         }
-        return new ArrayList<>(selected);
+        LinkedHashMap<String, Integer> indexByUrl = new LinkedHashMap<>();
+        for (int i = 0; i < allEvidenceUrls.size(); i++) {
+            String url = allEvidenceUrls.get(i);
+            if (url == null || url.isBlank()) {
+                continue;
+            }
+            indexByUrl.putIfAbsent(url, i + 1);
+        }
+        return indexByUrl;
+    }
+
+    private CitationPair extractCitationPair(List<String> evidenceUrls, Map<String, Integer> citationIndexByUrl) {
+        if (evidenceUrls == null || evidenceUrls.isEmpty() || citationIndexByUrl == null || citationIndexByUrl.isEmpty()) {
+            return null;
+        }
+        LinkedHashSet<Integer> uniqueIds = new LinkedHashSet<>();
+        for (String url : evidenceUrls) {
+            Integer index = citationIndexByUrl.get(url);
+            if (index != null) {
+                uniqueIds.add(index);
+            }
+            if (uniqueIds.size() >= 2) {
+                break;
+            }
+        }
+        if (uniqueIds.size() < 2) {
+            return null;
+        }
+
+        List<Integer> pair = new ArrayList<>(uniqueIds);
+        int first = pair.get(0);
+        int second = pair.get(1);
+        int lower = Math.min(first, second);
+        int upper = Math.max(first, second);
+        return new CitationPair(lower, upper);
+    }
+
+    private boolean isMechanicalCitationPairing(CitationPair firstPair, CitationPair secondPair) {
+        if (firstPair == null || secondPair == null) {
+            return false;
+        }
+        if (firstPair.offset() < 2 || secondPair.offset() < 2) {
+            return false;
+        }
+        if (firstPair.offset() != secondPair.offset()) {
+            return false;
+        }
+        int lowerDelta = secondPair.lowerId() - firstPair.lowerId();
+        int upperDelta = secondPair.upperId() - firstPair.upperId();
+        boolean nearbyProgression = Math.abs(lowerDelta) <= 2 && Math.abs(upperDelta) <= 2;
+        boolean notSamePair = lowerDelta != 0 || upperDelta != 0;
+        return nearbyProgression && notSamePair;
     }
 
     private void addDifferentPlatformCandidate(
@@ -1878,6 +2127,15 @@ public class PulseOrchestrator {
             int orderScore,
             double priorityScore
     ) {}
+
+    private record CitationPair(
+            int lowerId,
+            int upperId
+    ) {
+        private int offset() {
+            return upperId - lowerId;
+        }
+    }
 
     private record CrawlProjection(
             List<CrawledPost> allPosts,
