@@ -101,6 +101,34 @@ class PulseOrchestratorV2Tests {
     }
 
     @Test
+    void analyzeShouldDegradeWhenRedditFetchFailsButTwitterStillWorks() {
+        var orchestrator = buildOrchestrator(
+                new FixedQueryPlannerAgent(),
+                new FailingRedditAgent(),
+                new FixedTwitterAgent(),
+                new FixedSentimentAgent(),
+                new FixedStanceAgent(),
+                new FixedConflictAgent(),
+                new FixedAspectAgent(),
+                new FixedFlipRiskAgent(),
+                new TrackingSynthesisAgent(),
+                new FixedCriticAgent(72),
+                new AgentEventPublisher()
+        );
+        ReflectionTestUtils.setField(orchestrator, "confidenceThreshold", 60);
+
+        PulseReport report = assertDoesNotThrow(() -> orchestrator.analyze("Reddit failure degrade topic"));
+
+        assertNotNull(report);
+        assertNotNull(report.crawlerStats());
+        assertEquals(0, report.crawlerStats().redditCount(), "Failed Reddit fetch should degrade to empty posts");
+        assertTrue(report.crawlerStats().twitterCount() > 0, "Twitter data should still be preserved");
+        assertNotNull(report.allPosts());
+        assertFalse(report.allPosts().isEmpty(), "At least one platform should still contribute posts");
+        assertTrue(report.allPosts().stream().anyMatch(post -> "twitter".equalsIgnoreCase(post.platform())));
+    }
+
+    @Test
     void analyzeShouldFallbackToInitialSynthesisWhenRevisionFails() {
         var orchestrator = buildOrchestrator(
                 new FixedQueryPlannerAgent(),
@@ -588,6 +616,17 @@ class PulseOrchestratorV2Tests {
                     new RawPost("t1", "Twitter snippet 1", "https://x.com/1"),
                     new RawPost("t2", "Twitter snippet 2", "https://x.com/2")
             ));
+        }
+    }
+
+    private static class FailingRedditAgent extends RedditAgent {
+        FailingRedditAgent() {
+            super(null, null);
+        }
+
+        @Override
+        public RawPosts fetch(List<String> queries) {
+            throw new RuntimeException("simulated tavily limit");
         }
     }
 

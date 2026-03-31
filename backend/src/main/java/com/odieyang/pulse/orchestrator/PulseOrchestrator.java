@@ -149,9 +149,17 @@ public class PulseOrchestrator {
 
             // Step 2: Fetch posts in parallel
             CompletableFuture<RawPosts> redditFuture =
-                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> redditAgent.fetch(plan.redditQueries())));
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> safeRun(
+                            () -> redditAgent.fetch(plan.redditQueries()),
+                            emptyRawPosts("reddit"),
+                            "RedditAgent"
+                    )));
             CompletableFuture<RawPosts> twitterFuture =
-                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> twitterAgent.fetch(plan.twitterQueries())));
+                    CompletableFuture.supplyAsync(() -> scoped(runId, () -> safeRun(
+                            () -> twitterAgent.fetch(plan.twitterQueries()),
+                            emptyRawPosts("twitter"),
+                            "TwitterAgent"
+                    )));
 
             RawPosts fetchedReddit = redditFuture.join();
             RawPosts fetchedTwitter = twitterFuture.join();
@@ -2072,6 +2080,13 @@ public class PulseOrchestrator {
 
     private FlipRiskResult defaultFlipRiskResult() {
         return new FlipRiskResult(35, List.of(), List.of());
+    }
+
+    private RawPosts emptyRawPosts(String platform) {
+        String normalizedPlatform = (platform == null || platform.isBlank())
+                ? "unknown"
+                : platform.trim().toLowerCase(Locale.ROOT);
+        return new RawPosts(normalizedPlatform, List.of());
     }
 
     private int clampScore(int value) {
