@@ -1,57 +1,161 @@
-# Pulse Design Principles
+# Pulse Engineering Principles
 
-## Product intent
+## Purpose
 
-Pulse is a full stack system that turns one topic query into a report with source grounded evidence.
+This document defines non negotiable engineering invariants for Pulse and maps each invariant to concrete code enforcement points.
 
-1. Show what people are arguing about across platforms.
-2. Keep each key claim tied to real source content.
-3. Balance speed quality and cost for daily production use.
+## Invariant set
 
-## Core engineering principles
+### 1. Evidence must be real and traceable
 
-### Evidence first
+Rule:
 
-1. Do not show synthetic comments as real user content.
-2. Keep source links traceable from verdict to report sections.
-3. Rank evidence by semantic relevance and evidence strength.
+1. No synthetic quote placeholders in controversy feed.
+2. Claims in quick take must carry traceable evidence references.
+3. Citation source order must remain stable and URL deduped.
 
-### Explainability first
+Enforcement in code:
 
-1. Every major score must have plain language meaning.
-2. Critic findings must be visible in the report.
-3. Crawler quality must be measurable through structured stats.
+1. Backend claim to evidence mapping
+   `PulseOrchestrator.buildClaimEvidenceMap`
+2. Backend quick take rendering
+   `PulseOrchestrator.buildQuickTake`
+3. Frontend source canonicalization
+   `frontend/src/lib/api.js`
+   `buildCanonicalCitationSources`
+4. Controversy feed data assembly without synthetic filler
+   `frontend/src/lib/controversyMapper.js`
+   `buildControversyBoardData`
 
-### Reliable degradation
+Regression tests:
 
-1. External dependency failures must not break the full run by default.
-2. Single platform failure must degrade to partial output.
-3. Logs and events must allow fast root cause analysis.
+1. `backend/src/test/java/com/odieyang/pulse/orchestrator/PulseOrchestratorV2Tests.java`
+   `quickTakeShouldSpreadCitationsBeyondFirstTwoSources`
+2. `frontend/src/lib/__tests__/apiCitationSources.test.js`
+3. `frontend/src/lib/__tests__/controversyMapper.test.js`
 
-### Clean separation
+### 2. Crawler quality must be high precision under fixed budget
 
-1. Backend separates fetch analysis synthesis and assembly.
-2. Frontend separates transport state and presentation.
-3. Mobile and desktop behavior stay isolated to avoid cross regressions.
+Rule:
 
-### Pragmatic iteration
+1. Keep total posts small and relevant.
+2. Remove low signal and shell pages early.
+3. Rank globally before assigning to topic buckets.
 
-1. Fix user visible quality issues before adding new features.
-2. Ship incremental improvements with tests.
-3. Keep documents aligned with production behavior.
+Enforcement in code:
 
-## Decision checklist
+1. Pre analysis strict filtering
+   `PulseOrchestrator.tightenCrawledPosts`
+2. Hard irrelevant and noise checks
+   `PulseOrchestrator.isHardIrrelevantPost`
+   `PulseOrchestrator.looksLikeLowSignalNoise`
+3. Global relevance merge with per platform cap
+   `PulseOrchestrator.projectCrawledPosts`
+4. Twitter shell filtering at fetch time
+   `TwitterAgent.isTwitterJavascriptShell`
 
-Use this checklist for any major change.
+Regression tests:
 
-1. Does this change increase evidence quality or report clarity.
-2. Does this change preserve graceful degradation.
-3. Does this change increase coupling between unrelated modules.
-4. Does this change include regression tests.
-5. Does this change require documentation updates.
+1. `PulseOrchestratorV2Tests`
+   `analyzeShouldTightenNoisyCrawlerPostsByRelevance`
+   `analyzeShouldApplyStrictGateAndPlatformCapForHighRelevanceOnly`
+   `analyzeShouldPreferGlobalTopRelevanceInsteadOfArrivalOrder`
+   `analyzeShouldMeetPhase4CoverageTargetsAtTop16`
+2. `backend/src/test/java/com/odieyang/pulse/agent/TwitterAgentTests.java`
+   `fetchShouldFilterJavascriptShellPages`
 
-## Documentation discipline
+### 3. Citation selection must avoid mechanical patterns
 
-1. Keep active implementation guidance in `Doc`.
-2. Move outdated material to `Doc/history`.
-3. Keep language direct concrete and implementation focused.
+Rule:
+
+1. Do not let frontline claim citations collapse into fixed offset patterns.
+2. Prefer semantically relevant evidence across both platforms.
+3. Maintain diversity when enough sources exist.
+
+Enforcement in code:
+
+1. Backend quick take anti pattern guard
+   `PulseOrchestrator.applyQuickTakeMechanicalPairingGuard`
+2. Synthesis prompt side candidate pool generation
+   `SynthesisAgent.buildSectionCitationPools`
+3. Synthesis output validation for fixed offset patterns
+   `SynthesisAgent.hasFrontlineFixedOffsetCitationPairing`
+   `SynthesisAgent.collectCriticalViolations`
+
+Regression tests:
+
+1. `PulseOrchestratorV2Tests`
+   `quickTakeShouldAvoidLegacyFixedOffsetCitationPairing`
+   `quickTakeShouldRepairMechanicalPairingWhenFirstTwoClaimsAlignByOffset`
+   `mechanicalPairingGuardShouldRewriteSecondClaimWhenOffsetPatternDetected`
+2. `backend/src/test/java/com/odieyang/pulse/agent/SynthesisAgentFormattingTests.java`
+   `collectCriticalViolationsShouldFlagFrontlineFixedOffsetPairing`
+   `collectCriticalViolationsShouldAllowNonMechanicalFrontlinePairing`
+
+### 4. Degradation must be graceful not catastrophic
+
+Rule:
+
+1. One failed agent must not kill the full run.
+2. One failed source platform must still produce a valid partial report.
+3. SSE and API transport errors should move UI state to explicit failure state.
+
+Enforcement in code:
+
+1. Backend guarded execution wrapper
+   `PulseOrchestrator.safeRun`
+2. Default fallback payload constructors in orchestrator
+   `defaultStanceResult`, `defaultConflictResult`, `defaultAspectResult`, `defaultFlipRiskResult`, `emptyRawPosts`
+3. Frontend error state transition
+   `usePulse.submit` and `usePulse.cancelRun`
+
+Regression tests:
+
+1. `PulseOrchestratorV2Tests`
+   `analyzeShouldFallbackWhenOptionalAgentsFail`
+   `analyzeShouldDegradeWhenRedditFetchFailsButTwitterStillWorks`
+   `analyzeShouldFallbackToInitialSynthesisWhenRevisionFails`
+2. `frontend/src/hooks/__tests__/usePulseV2.test.js`
+   `falls back to error state when analyze request fails`
+   `cancels active run and ignores late analyze result`
+
+### 5. Mobile and desktop loading UI must stay isolated
+
+Rule:
+
+1. Mobile behavior changes must not mutate desktop layout structure.
+2. Mobile CSS must remain namespaced.
+3. Execution tree and console behavior can diverge by device.
+
+Enforcement in code:
+
+1. Component level split
+   `AgentTheaterLoadingDesktop.jsx`
+   `AgentTheaterLoadingMobile.jsx`
+2. Runtime router by media query
+   `AgentTheaterLoading.jsx`
+3. Mobile namespace classes
+   `.theater-mobile-*` in `frontend/src/App.css`
+
+Regression tests:
+
+1. `frontend/src/components/__tests__/AgentTheaterLoading.test.jsx`
+   `keeps desktop structure with original split layout classes`
+   `uses mobile tabbed layout with execution summary and expandable full chain`
+   `renders mobile console log line as two-row layout`
+   `auto-scrolls only when console is at bottom on mobile`
+
+## Engineering decision checklist for every change
+
+1. Which invariant does this change affect.
+2. Which implementation points will be modified.
+3. Which regression tests already cover this behavior.
+4. Which new test should be added if coverage is missing.
+5. Which document in `Doc/for-developer` must be updated in the same change.
+
+## PR quality bar
+
+1. No behavior only changes without test updates in impacted high risk areas.
+2. No hidden contract changes between backend `PulseReport` and frontend `normalizeReport`.
+3. No mobile fixes that alter desktop `md:flex-row` loading layout behavior.
+4. No crawler parameter changes without validating top citation stability and relevance.

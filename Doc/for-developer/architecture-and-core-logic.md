@@ -1,127 +1,262 @@
 # Pulse Architecture and Core Logic
 
-## Repository structure
+## Repository topology
 
-1. `backend` holds orchestration agents domain models and service integration.
-2. `frontend` holds report rendering state management and client transport code.
-3. `Doc` holds active engineering documentation.
+1. Backend runtime
+   `backend/src/main/java/com/odieyang/pulse`
+2. Backend tests
+   `backend/src/test/java/com/odieyang/pulse`
+3. Frontend runtime
+   `frontend/src`
+4. Frontend tests
+   `frontend/src/**/__tests__`
 
-## Backend architecture
+## Backend runtime architecture
 
-### Main modules
+### Request entrypoints
 
-1. `agent`
-   Query planning fetch sentiment stance conflict aspect flip risk synthesis and critic modules.
-2. `orchestrator`
-   `PulseOrchestrator` controls run lifecycle concurrency and report assembly.
-3. `model`
-   Immutable records for all transport and report payloads.
-4. `service`
-   Tavily integration and event stream publishing.
-5. `controller`
-   HTTP endpoints for analyze stream and health.
-6. `config`
-   AI client CORS and SPA routing behavior.
+1. Analyze API
+   `backend/src/main/java/com/odieyang/pulse/controller/PulseController.java`
+   Method: `analyze`
+2. SSE stream API
+   `backend/src/main/java/com/odieyang/pulse/controller/PulseController.java`
+   Method: `stream`
+3. Health API
+   `backend/src/main/java/com/odieyang/pulse/controller/ApiHealthController.java`
+   Method: `health`
 
-### Runtime flow
+### Orchestration center
 
-`PulseOrchestrator.analyze` executes this sequence.
+Core coordinator:
+`backend/src/main/java/com/odieyang/pulse/orchestrator/PulseOrchestrator.java`
 
-1. Build query plan.
-2. Fetch Reddit and Twitter in parallel.
-3. Apply crawler relevance gate in `tightenCrawledPosts`.
-4. Run sentiment and structure analysis in parallel.
-5. Generate synthesis and run critic.
-6. Apply one controlled rewrite when quality thresholds fail.
-7. Build claim evidence map and quick take lines.
-8. Apply citation anti pattern guard to avoid mechanical pair selection.
-9. Merge crawled posts using global relevance ranking in `projectCrawledPosts`.
-10. Build topic buckets and crawler stats.
-11. Return final `PulseReport`.
+Primary method:
+`analyze(String topic, String requestedRunId, String locale)`
 
-### Crawler policy in production
+### End to end analyze pipeline with implementation locations
 
-1. Target total is 16.
-2. Relevance minimum score is 4.
-3. Minimum retain count is 2.
-4. Minimum retain ratio is 0.15.
-5. Maximum hashtags is 2.
-6. Per platform cap is 8.
+1. Resolve locale and run id, register run scoped stream
+   `resolveLocale`, `resolveRunId`, `publisher.registerRun`, `publisher.stream`
+2. Build query plan
+   `QueryPlannerAgent.plan`
+   File: `backend/src/main/java/com/odieyang/pulse/agent/QueryPlannerAgent.java`
+3. Fetch Reddit and Twitter in parallel
+   `RedditAgent.fetch`, `TwitterAgent.fetch`
+4. Tight relevance gate on fetched posts before analysis
+   `tightenCrawledPosts`
+5. Run analysis agents in parallel
+   `SentimentAgent.analyze`, `StanceAgent.analyze`, `ConflictAgent.analyze`, `AspectAgent.analyze`, `FlipRiskAgent.analyze`
+6. Run synthesis and critic
+   `SynthesisAgent.synthesizeWithCoreEntity`, `CriticAgent.critique`
+7. Optional single rewrite on quality gate failure
+   `buildRewriteGuidance` then second `synthesizeWithCoreEntity(...)` call
+8. Build evidence linked claims and quick take
+   `buildClaimEvidenceMap`, `buildQuickTake`
+9. Repair mechanical citation pairing in quick take
+   `applyQuickTakeMechanicalPairingGuard`
+10. Project final crawled posts with global relevance ranking
+    `projectCrawledPosts`
+11. Build topic buckets and crawler diagnostics
+    `buildTopicBuckets`, `buildCrawlerStats`
+12. Build report level critic mapping
+    `buildRevisionAnchors`, `buildClaimAnnotations`, `buildRiskFlags`
+13. Validate synthesis format and fallback to deterministic reporter template if needed
+    `finalizeSynthesis`, `isValidReporterSynthesis`, `buildReporterFallback`
+14. Return `PulseReport`
+    Model file: `backend/src/main/java/com/odieyang/pulse/model/PulseReport.java`
 
-## Frontend architecture
+### Agent layer implementation map
 
-### State and transport
+1. Query planning
+   `QueryPlannerAgent.plan`
+2. Source fetching
+   `RedditAgent.fetch`, `TwitterAgent.fetch`
+3. Twitter shell page filtering
+   `TwitterAgent.isTwitterJavascriptShell`
+4. Sentiment normalization and quote camp normalization
+   `SentimentAgent.normalizeResult`, `SentimentAgent.normalizeQuotes`
+5. Stance to camp conversion helper
+   `StanceResult.toCampDistribution`
+6. Synthesis rendering, citation rules, boundary classifier
+   `SynthesisAgent.doSynthesize`, `SynthesisAgent.buildUserPrompt`, `SynthesisAgent.collectCriticalViolations`,
+   `SynthesisAgent.buildSectionCitationPools`, `SynthesisAgent.classifyBoundaryTopicIndexes`
+7. Critic quality signals
+   `CriticAgent.critique`
 
-1. `usePulse` owns run state with values idle loading complete and error.
-2. SSE stream opens before analyze request.
-3. Agent events append to graph state and live log.
-4. SSE closes when analyze completes or fails.
+### Crawler and relevance logic map
 
-### API normalization
+All core logic is in `PulseOrchestrator`.
 
-`frontend/src/lib/api.js` normalizes backend payloads before render.
+1. Pre analysis strict filtering
+   `tightenCrawledPosts`
+2. Anchor construction
+   `buildRelevanceAnchors`, `collectAnchorTokens`
+3. Hard reject and low signal noise checks
+   `isHardIrrelevantPost`, `looksLikeLowSignalNoise`, `hashtagCount`
+4. Relevance scoring
+   `postRelevanceScore`, `crawledPostRelevanceScore`
+5. Global dedupe and top N merge
+   `projectCrawledPosts`
+6. Topic assignment rule scoring
+   `scorePostAcrossTopics`, `topicMatchScore`
+7. Boundary LLM classification for ambiguous posts
+   `buildTopicBuckets` calling `SynthesisAgent.classifyBoundaryTopicIndexes`
+8. Bucket ranking
+   `recencyScore`, `evidenceScore`, `sortScore`
+9. Coverage diagnostics
+   `buildCrawlerStats`
 
-1. Normalizes `allPosts` `topicBuckets` and `crawlerStats`.
-2. Builds canonical citation source list.
-3. Applies safe fallback values for missing fields.
+### Citation and quick take logic map
 
-### Report rendering layout
+1. Evidence quote collection
+   `collectEvidenceQuotes`, `addEvidenceQuotes`
+2. Claim level evidence ranking
+   `rankEvidenceForClaim`, `pickEvidenceUrlsForClaim`
+3. Citation index extraction and pairing checks
+   `buildCitationIndexByUrl`, `extractCitationPair`, `isMechanicalCitationPairing`
+4. Anti pattern rewrite of second claim citations
+   `pickAlternativeUrlsForSecondClaim`, `findBestNonMechanicalPair`
+5. Quick take final rendering
+   `buildQuickTake`, `renderEvidenceRefs`
 
-1. `App.jsx` controls screen level layout and transitions.
-2. Loading view is isolated by device specific theater components.
-3. Report view includes verdict metrics controversy and integrity sections.
+## Frontend runtime architecture
+
+### State machine and transport
+
+1. Main hook
+   `frontend/src/hooks/usePulse.js`
+2. Run states
+   `idle`, `loading`, `complete`, `error`
+3. SSE first then analyze request flow
+   `connectSSE` then `analyzeTopic` in `submit`
+4. Run cancellation
+   `cancelRun` in `usePulse`
+
+### API normalization and contract shaping
+
+Main file:
+`frontend/src/lib/api.js`
+
+Key functions:
+
+1. `analyzeTopic`
+   HTTP call and timeout
+2. `normalizeReport`
+   Converts backend payload to render safe frontend object
+3. `buildCanonicalCitationSources`
+   Preserves backend source order and URL based dedupe
+4. `connectSSE`
+   EventSource wrapper with readiness promise
+5. `keepAlive`
+   Periodic health ping
+
+### Report rendering composition
+
+Main screen:
+`frontend/src/App.jsx`
+
+Section composition:
+
+1. Search and submit
+   `SearchBar`
+2. Loading theater
+   `AgentTheaterLoading`
+3. Frontline verdict with inline citations
+   `parseCitations` from `SemanticSourceChip`
+4. Confidence and metric dashboard
+   `DramaScoreboard`
+5. Sentiment and camp split
+   `SentimentChart`, `CampBattleBoard`
+6. Controversy feed
+   `ControversyAccordion`
+7. Integrity panel
+   `SynthesisReport`
+8. Bottom action bar
+   fixed share and new query controls
+
+### Controversy data mapping
+
+File:
+`frontend/src/lib/controversyMapper.js`
+
+Flow:
+
+1. Prefer backend `topicBuckets` when present
+   `buildDataFromTopicBuckets`
+2. Filter Twitter JS shell artifacts
+   `isTwitterShellText`
+3. Preserve ranking metadata from backend posts
+   `evidenceScore`, `recencyScore`, `sortScore`, `classificationMethod`
+4. Fallback to representative quotes when buckets are missing
+   `buildControversyBoardData`
+
+### Mobile and desktop loading isolation
+
+1. Device switch wrapper
+   `frontend/src/components/AgentTheaterLoading.jsx`
+2. Desktop implementation
+   `frontend/src/components/AgentTheaterLoadingDesktop.jsx`
+3. Mobile implementation
+   `frontend/src/components/AgentTheaterLoadingMobile.jsx`
+4. Mobile CSS namespace
+   `frontend/src/App.css`
+   Classes prefixed with `.theater-mobile-`
 
 ## API contract essentials
 
-### Endpoints
+### Public endpoints
 
 1. `POST /api/pulse/analyze`
 2. `GET /api/pulse/stream`
 3. `GET /api/actuator/health`
 
-Legacy compatibility endpoints remain available.
+Compatibility routes:
 
 1. `POST /pulse/analyze`
 2. `GET /pulse/stream`
 
-### Fields required by frontend
+### Backend response model
+
+Canonical payload type:
+`backend/src/main/java/com/odieyang/pulse/model/PulseReport.java`
+
+Frontend critical fields and owning logic:
 
 1. `quickTake`
-2. `allPosts`
-3. `topicBuckets`
-4. `crawlerStats`
-5. `claimEvidenceMap`
-6. `claimAnnotations`
-7. `riskFlags`
-8. `revisionAnchors`
+   built in orchestrator `buildQuickTake`
+2. `claimEvidenceMap`
+   built in orchestrator `buildClaimEvidenceMap`
+3. `allPosts`, `topicBuckets`, `crawlerStats`
+   built in orchestrator `projectCrawledPosts`, `buildTopicBuckets`, `buildCrawlerStats`
+4. `claimAnnotations`, `riskFlags`, `revisionAnchors`
+   built in orchestrator `buildClaimAnnotations`, `buildRiskFlags`, `buildRevisionAnchors`
+5. `citationSources`
+   frontend derived field in `buildCanonicalCitationSources`
 
 ## Configuration and packaging
 
-### Runtime configuration
+### Runtime properties
 
-Primary file is `backend/src/main/resources/application.properties`.
+Property file:
+`backend/src/main/resources/application.properties`
 
-Required keys:
+Critical groups:
 
-1. `OPENAI_API_KEY`
-2. `TAVILY_API_KEY`
+1. OpenAI model and API key
+2. Tavily key and result cap
+3. CORS origins
+4. Crawler limits and relevance thresholds
+5. Debate confidence threshold
 
-Important crawler and quality settings:
+### Build pipeline
 
-1. `CRAWLER_TARGET_TOTAL`
-2. `CRAWLER_RELEVANCE_MIN_SCORE`
-3. `CRAWLER_RELEVANCE_PLATFORM_CAP`
-4. `debate.confidence.threshold`
-5. `debate.quality.min-density`
-6. `debate.quality.min-claim-coverage`
+Build file:
+`backend/pom.xml`
 
-### Build integration
+Packaging behavior:
 
-`backend/pom.xml` runs frontend install and build during backend package.
-
-1. Installs Node and npm.
-2. Runs frontend dependency install.
-3. Builds frontend assets.
-4. Copies `frontend/dist` into backend static output.
-
-Result is one deployable backend artifact with embedded frontend.
+1. Install Node and npm in Maven `prepare-package`
+2. Run frontend `npm install`
+3. Run frontend `npm run build`
+4. Copy `frontend/dist` into `backend` static resources
+5. Produce one Spring Boot jar containing API plus frontend assets
