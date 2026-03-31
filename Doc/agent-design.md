@@ -1,5 +1,45 @@
 # Pulse Agent System Design
 
+## Execution Skeleton at a Glance
+
+```text
+USER TOPIC
+   |
+   v
+QueryPlannerAgent
+   |
+   v
++---------------------- PARALLEL FETCH -----------------------+
+|  RedditAgent                     TwitterAgent               |
+|  (reddit.com retrieval)          (x.com/twitter.com + shell filter) |
++-------------------------------------------------------------+
+   |
+   v
+Relevance Tightening + Dedup + Platform Caps
+   |
+   v
++--------------------- PARALLEL ANALYSIS ---------------------+
+| Sentiment | Stance | Conflict | Aspect | FlipRisk          |
++-------------------------------------------------------------+
+   |
+   v
+SynthesisAgent (draft)
+   |
+   v
+CriticAgent (quality audit)
+   |
+   +---- if below quality threshold ----> SynthesisAgent (one guided rewrite)
+   |
+   v
+Claim Evidence Mapping + Citation Guard + Topic Buckets + Crawler Stats
+   |
+   v
+FINAL PULSE REPORT + LIVE SSE EXECUTION TRACE
+```
+
+Core design signal:
+parallel where possible, gate quality before finalization, and keep graceful fallback paths.
+
 ## Why We Built a Multi Agent System
 
 Public opinion analysis is not one task.
