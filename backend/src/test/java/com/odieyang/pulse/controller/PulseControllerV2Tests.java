@@ -51,7 +51,13 @@ class PulseControllerV2Tests {
                 .andExpect(jsonPath("$.revisionDelta[0]").value("Removed unsupported claim"))
                 .andExpect(jsonPath("$.claimAnnotations[0].annotationId").value("ann-1"))
                 .andExpect(jsonPath("$.riskFlags[0].flagId").value("risk-gap-1"))
-                .andExpect(jsonPath("$.revisionAnchors[0].anchorId").value("rev-1"));
+                .andExpect(jsonPath("$.revisionAnchors[0].anchorId").value("rev-1"))
+                .andExpect(jsonPath("$.allPosts[0].platform").value("reddit"))
+                .andExpect(jsonPath("$.allPosts[0].classificationMethod").value("rule"))
+                .andExpect(jsonPath("$.crawlerStats.targetTotal").value(16))
+                .andExpect(jsonPath("$.crawlerStats.coverageLevel").value("warning"))
+                .andExpect(jsonPath("$.topicBuckets[0].topicId").value("t1"))
+                .andExpect(jsonPath("$.topicBuckets[0].posts[0].url").value("https://reddit.com/r/test"));
     }
 
     @Test
@@ -144,7 +150,61 @@ class PulseControllerV2Tests {
                         "Revision 1",
                         "Removed unsupported claim",
                         "C1"
-                ))
+                )),
+                List.of(
+                        new CrawledPost(
+                                "reddit",
+                                "Reddit thread",
+                                "Taylor Swift and Ed Sheeran friendship debate evidence",
+                                "https://reddit.com/r/test",
+                                91,
+                                88,
+                                90,
+                                "rule"
+                        ),
+                        new CrawledPost(
+                                "twitter",
+                                "X thread",
+                                "Taylor Swift and Ed Sheeran friendship debate update",
+                                "https://x.com/test",
+                                86,
+                                82,
+                                84,
+                                "rule+llm"
+                        )
+                ),
+                new CrawlerStats(
+                        16,
+                        2,
+                        1,
+                        1,
+                        2,
+                        0,
+                        13,
+                        "warning",
+                        List.of("Low crawl coverage: 13% (<70% target).")
+                ),
+                List.of(
+                        new TopicBucket(
+                                "t1",
+                                "Pricing",
+                                List.of(new CrawledPost(
+                                        "reddit",
+                                        "Reddit thread",
+                                        "Taylor Swift and Ed Sheeran friendship debate evidence",
+                                        "https://reddit.com/r/test",
+                                        91,
+                                        88,
+                                        90,
+                                        "rule"
+                                ))
+                        ),
+                        new TopicBucket(
+                                "unassigned",
+                                "Unassigned",
+                                List.of()
+                        )
+                )
         );
     }
 

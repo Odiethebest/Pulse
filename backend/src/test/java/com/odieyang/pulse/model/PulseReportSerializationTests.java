@@ -67,7 +67,61 @@ class PulseReportSerializationTests {
                         "Revision 1",
                         "Clarified camp split language",
                         "C1"
-                ))
+                )),
+                List.of(
+                        new CrawledPost(
+                                "reddit",
+                                "Reddit thread",
+                                "Taylor Swift and Ed Sheeran friendship debate evidence",
+                                "https://reddit.com/test",
+                                90,
+                                86,
+                                88,
+                                "rule"
+                        ),
+                        new CrawledPost(
+                                "twitter",
+                                "X thread",
+                                "Taylor Swift and Ed Sheeran friendship debate update",
+                                "https://x.com/test",
+                                85,
+                                80,
+                                83,
+                                "rule+llm"
+                        )
+                ),
+                new CrawlerStats(
+                        16,
+                        2,
+                        1,
+                        1,
+                        2,
+                        0,
+                        13,
+                        "warning",
+                        List.of("Low crawl coverage: 13% (<70% target).")
+                ),
+                List.of(
+                        new TopicBucket(
+                                "t1",
+                                "Pricing",
+                                List.of(new CrawledPost(
+                                        "reddit",
+                                        "Reddit thread",
+                                        "Taylor Swift and Ed Sheeran friendship debate evidence",
+                                        "https://reddit.com/test",
+                                        90,
+                                        86,
+                                        88,
+                                        "rule"
+                                ))
+                        ),
+                        new TopicBucket(
+                                "unassigned",
+                                "Unassigned",
+                                List.of()
+                        )
+                )
         );
 
         JsonNode root = objectMapper.readTree(objectMapper.writeValueAsString(report));
@@ -89,6 +143,97 @@ class PulseReportSerializationTests {
         assertEquals("rev-1", root.get("revisionAnchors").get(0).get("anchorId").asText());
         assertEquals("support", root.get("redditSentiment").get("representativeQuotes").get(0).get("camp").asText());
         assertEquals(0.8, root.get("redditSentiment").get("representativeQuotes").get(0).get("evidenceWeight").asDouble(), 0.0001);
+        assertEquals("reddit", root.get("allPosts").get(0).get("platform").asText());
+        assertEquals("rule", root.get("allPosts").get(0).get("classificationMethod").asText());
+        assertEquals(16, root.get("crawlerStats").get("targetTotal").asInt());
+        assertEquals("warning", root.get("crawlerStats").get("coverageLevel").asText());
+        assertEquals("t1", root.get("topicBuckets").get(0).get("topicId").asText());
+        assertEquals("unassigned", root.get("topicBuckets").get(1).get("topicId").asText());
+    }
+
+    @Test
+    void shouldDeserializeCrawlerContractFields() throws Exception {
+        String json = """
+                {
+                  "topic": "Topic",
+                  "topicSummary": "Topic summary",
+                  "redditSentiment": {
+                    "platform": "reddit",
+                    "positiveRatio": 0.55,
+                    "negativeRatio": 0.30,
+                    "neutralRatio": 0.15,
+                    "mainControversies": ["pricing"],
+                    "representativeQuotes": [{"text":"text","url":"url","sentiment":"positive","camp":"support","evidenceWeight":0.8}]
+                  },
+                  "twitterSentiment": {
+                    "platform": "twitter",
+                    "positiveRatio": 0.45,
+                    "negativeRatio": 0.35,
+                    "neutralRatio": 0.20,
+                    "mainControversies": ["credibility"],
+                    "representativeQuotes": [{"text":"text2","url":"url2","sentiment":"negative","camp":"oppose","evidenceWeight":0.7}]
+                  },
+                  "platformDiff": "diff",
+                  "synthesis": "content",
+                  "critique": {
+                    "unsupportedClaims": [],
+                    "biasConcerns": [],
+                    "exceedsDataScope": false,
+                    "confidenceScore": 70,
+                    "revisionSuggestions": "tighten"
+                  },
+                  "confidenceScore": 70,
+                  "debateTriggered": false,
+                  "executionTrace": [],
+                  "allPosts": [
+                    {
+                      "platform": "reddit",
+                      "title": "Reddit thread",
+                      "snippet": "topic evidence",
+                      "url": "https://reddit.com/test",
+                      "evidenceScore": 90,
+                      "recencyScore": 86,
+                      "sortScore": 88,
+                      "classificationMethod": "rule"
+                    }
+                  ],
+                  "crawlerStats": {
+                    "targetTotal": 16,
+                    "fetchedTotal": 1,
+                    "redditCount": 1,
+                    "twitterCount": 0,
+                    "dedupedCount": 1,
+                    "unassignedCount": 0,
+                    "coveragePercent": 6,
+                    "coverageLevel": "warning",
+                    "coverageAlerts": ["low coverage"]
+                  },
+                  "topicBuckets": [
+                    {
+                      "topicId": "t1",
+                      "topicName": "Pricing",
+                      "posts": []
+                    },
+                    {
+                      "topicId": "unassigned",
+                      "topicName": "Unassigned",
+                      "posts": []
+                    }
+                  ]
+                }
+                """;
+
+        PulseReport report = objectMapper.readValue(json, PulseReport.class);
+
+        assertNotNull(report.allPosts());
+        assertEquals(1, report.allPosts().size());
+        assertEquals("reddit", report.allPosts().getFirst().platform());
+        assertNotNull(report.crawlerStats());
+        assertEquals(16, report.crawlerStats().targetTotal());
+        assertEquals("warning", report.crawlerStats().coverageLevel());
+        assertNotNull(report.topicBuckets());
+        assertEquals(2, report.topicBuckets().size());
+        assertEquals("t1", report.topicBuckets().getFirst().topicId());
     }
 
     @Test
