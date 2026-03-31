@@ -1,7 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import AgentTheaterLoading from '../AgentTheaterLoading'
 import AgentTheaterLoadingDesktop from '../AgentTheaterLoadingDesktop'
 import AgentTheaterLoadingMobile from '../AgentTheaterLoadingMobile'
+
+const originalMatchMedia = window.matchMedia
 
 function eventLine(index, status = 'STARTED') {
   return {
@@ -13,9 +16,62 @@ function eventLine(index, status = 'STARTED') {
   }
 }
 
+function mockMatchMedia(matches) {
+  const mediaQuery = {
+    matches,
+    media: '(max-width: 767px)',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockImplementation(() => mediaQuery),
+  })
+  return mediaQuery
+}
+
 describe('AgentTheaterLoading isolation', () => {
   afterEach(() => {
     cleanup()
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia,
+    })
+  })
+
+  it('routes to mobile component when max-width media query matches', () => {
+    mockMatchMedia(true)
+
+    render(
+      <AgentTheaterLoading
+        runStatus="loading"
+        agentEvents={[eventLine(1)]}
+        liveText=""
+      />
+    )
+
+    expect(screen.getByTestId('theater-mobile-shell')).toBeInTheDocument()
+  })
+
+  it('routes to desktop component when max-width media query does not match', () => {
+    mockMatchMedia(false)
+
+    render(
+      <AgentTheaterLoading
+        runStatus="loading"
+        agentEvents={[eventLine(1)]}
+        liveText=""
+      />
+    )
+
+    expect(screen.getByText('Execution Tree')).toBeInTheDocument()
+    expect(screen.getByText('Pulse Console')).toBeInTheDocument()
   })
 
   it('keeps desktop structure with original split layout classes', () => {
@@ -111,6 +167,58 @@ describe('AgentTheaterLoading isolation', () => {
 
     fireEvent.click(view.getByRole('button', { name: /hide all steps/i }))
     expect(view.queryByTestId('theater-mobile-tree-all')).not.toBeInTheDocument()
+  })
+
+  it('renders mobile console log line as two-row layout', () => {
+    const view = render(
+      <AgentTheaterLoadingMobile
+        runStatus="loading"
+        agentEvents={[eventLine(1)]}
+        liveText=""
+      />
+    )
+
+    const firstLogLine = view.container.querySelector('.theater-mobile-logline')
+    expect(firstLogLine).toBeTruthy()
+
+    const metaRow = firstLogLine.querySelector('.theater-mobile-logmeta')
+    const messageRow = firstLogLine.querySelector('.theater-mobile-logmsg')
+
+    expect(metaRow).toBeTruthy()
+    expect(metaRow).toHaveTextContent('STARTED')
+    expect(metaRow).toHaveTextContent('CriticAgent')
+    expect(messageRow).toBeTruthy()
+    expect(messageRow).toHaveTextContent('line-1')
+  })
+
+  it('shows jump button and jumps to latest when user is away from bottom', async () => {
+    const view = render(
+      <AgentTheaterLoadingMobile
+        runStatus="loading"
+        agentEvents={[eventLine(1), eventLine(2)]}
+        liveText=""
+      />
+    )
+
+    const consoleNode = view.getByTestId('theater-mobile-console')
+    consoleNode.scrollTo = vi.fn()
+
+    Object.defineProperty(consoleNode, 'scrollHeight', { value: 600, configurable: true, writable: true })
+    Object.defineProperty(consoleNode, 'clientHeight', { value: 200, configurable: true, writable: true })
+    Object.defineProperty(consoleNode, 'scrollTop', { value: 260, configurable: true, writable: true })
+
+    fireEvent.scroll(consoleNode)
+    const jumpButton = view.getByRole('button', { name: /jump to latest/i })
+    expect(jumpButton).toBeInTheDocument()
+
+    fireEvent.click(jumpButton)
+    expect(consoleNode.scrollTo).toHaveBeenCalled()
+    const lastCall = consoleNode.scrollTo.mock.calls[consoleNode.scrollTo.mock.calls.length - 1]?.[0]
+    expect(lastCall?.top).toBe(600)
+
+    await waitFor(() => {
+      expect(view.queryByRole('button', { name: /jump to latest/i })).not.toBeInTheDocument()
+    })
   })
 
   it('auto-scrolls only when console is at bottom on mobile', async () => {
