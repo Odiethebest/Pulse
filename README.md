@@ -1,47 +1,37 @@
 # Pulse
 
-Pulse turns large scale public discussion into a report that teams can use for clear decisions.
-You provide one topic.
-Pulse returns platform sentiment, confidence scoring, representative quotes, and a transparent execution trace.
+**One query. Two platforms. One clear take.**
 
-## Product Value
+Pulse is a multi-agent system for fast-moving internet debates.  
+You type a topic once, and Pulse turns cross-platform noise into a readable report with evidence, confidence, and risk signals.
 
-1. Reduce research time on fast moving public conversations.
-2. Compare sentiment across Reddit and X in one report.
-3. Improve report quality through critic review when confidence is low.
-4. Expose live agent progress through server sent events.
-5. Ship frontend and backend from one repository as one service.
+## What You Get
 
-## Repository Structure
+1. A frontline verdict you can read in seconds.
+2. Cross-platform sentiment and camp split from Reddit and X.
+3. Controversy lenses with source-grounded quote cards.
+4. Confidence, heat, polarization, and narrative flip risk.
+5. A visible execution trace so the process is not a black box.
 
-```text
-Pulse/
-├─ backend/
-├─ frontend/
-└─ Doc/
-```
+## Quick Start
 
-## API Surface
-
-1. `POST /api/pulse/analyze`
-2. `GET /api/pulse/stream`
-3. `GET /api/actuator/health`
-
-Compatibility routes are still available.
-
-1. `POST /pulse/analyze`
-2. `GET /pulse/stream`
-
-## Environment Requirements
+Requirements:
 
 1. Java 21
 2. Node.js 22.12 or newer
 3. OpenAI API key
 4. Tavily API key
 
-## Start the Project
+Setup:
 
-Run these two commands in separate terminals after setup is complete.
+```bash
+cd backend
+cp .env.example .env
+cd ../frontend
+npm install
+```
+
+Run in two terminals:
 
 Terminal A
 
@@ -57,117 +47,41 @@ cd frontend
 npm run dev
 ```
 
-## Local Setup
+Local endpoints:
 
-1. Prepare backend environment file.
+1. Frontend: `http://localhost:5173`
+2. Backend: `http://localhost:8080`
 
-```bash
-cd backend
-cp .env.example .env
-cd ..
-```
+## API
 
-Run this command only the first time.
-Then open `backend/.env` and add your API keys.
+1. `POST /api/pulse/analyze`
+2. `GET /api/pulse/stream`
+3. `GET /api/actuator/health`
 
-2. Install frontend dependencies.
+Compatibility routes remain available:
 
-```bash
-cd frontend
-npm install
-cd ..
-```
+1. `POST /pulse/analyze`
+2. `GET /pulse/stream`
 
-If you want to apply npm security fixes, run the command in `frontend`.
+## Documentation Map
 
-```bash
-cd frontend
-npm audit fix
-cd ..
-```
+Product-facing docs:
 
-3. Start backend service in Terminal A.
+1. [Inspiration story](Doc/inspiration.md)
+2. [UIUX design narrative](Doc/UIUX-design.md)
+3. [Agent system design narrative](Doc/agent-design.md)
 
-```bash
-cd backend
-./mvnw spring-boot:run
-```
+Developer docs:
 
-Keep Terminal A running after the command starts the server.
-Do not run any other command in Terminal A.
+1. [Developer docs index](Doc/for-developer/README.md)
+2. [Architecture and core logic](Doc/for-developer/architecture-and-core-logic.md)
+3. [Design principles](Doc/for-developer/design-principles.md)
+4. [UIUX implementation guide](Doc/for-developer/uiux-guidelines.md)
+5. [Operations and maintenance](Doc/for-developer/operations-maintenance.md)
+6. [Testing and quality](Doc/for-developer/testing-quality.md)
 
-4. Start frontend service in Terminal B.
+## Built By
 
-Open a new terminal window first.
-
-```bash
-cd frontend
-npm run dev
-```
-
-## Local Endpoints
-
-1. Frontend `http://localhost:5173`
-2. Backend `http://localhost:8080`
-3. Frontend uses `/api` and Vite forwards requests to backend
-
-## Troubleshooting
-
-If you see this Maven error, the command was typed incorrectly.
-
-`Could not find goal 'runcd'`
-
-Use the exact command below.
-
-```bash
-cd backend
-./mvnw spring-boot:run
-```
-
-## Production Build
-
-1. Build backend package.
-
-```bash
-cd backend
-./mvnw clean package
-cd ..
-```
-
-2. Run packaged service.
-
-```bash
-cd backend/target
-java -jar pulse-*.jar
-```
-
-The backend build process also builds frontend assets and serves them as static content.
-
-## Smoke Checks
-
-1. Health check.
-
-```bash
-curl -sS http://localhost:8080/api/actuator/health
-```
-
-2. Analyze request.
-
-```bash
-curl -sS -X POST http://localhost:8080/api/pulse/analyze -H "Content-Type: application/json" -d '{"topic":"OpenAI releases GPT-5"}'
-```
-
-3. Live stream.
-
-```bash
-curl -N http://localhost:8080/api/pulse/stream
-```
-
-## Documentation
-
-1. [Documentation index](Doc/README.md)
-2. [Design principles](Doc/design-principles.md)
-3. [Architecture and core logic](Doc/architecture-and-core-logic.md)
-4. [UIUX guidelines](Doc/uiux-guidelines.md)
-5. [Operations and maintenance](Doc/operations-maintenance.md)
-6. [Testing and quality](Doc/testing-quality.md)
+Built by **Odie Yang**.  
+Want to see it in action right now? Try the live demo at **[pulse.odieyang.com](https://pulse.odieyang.com)**.  
+For more projects and updates, check out **[odieyang.com](https://odieyang.com)**.
