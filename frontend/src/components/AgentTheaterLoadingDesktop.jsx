@@ -20,6 +20,15 @@ const BOOT_LINES = [
   'Awaiting first live agent signal...',
 ]
 
+function scrollToBottom(node) {
+  if (!node) return
+  if (typeof node.scrollTo === 'function') {
+    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' })
+    return
+  }
+  node.scrollTop = node.scrollHeight
+}
+
 function formatClock(value) {
   const date = value ? new Date(value) : null
   if (!date || Number.isNaN(date.getTime())) return '--:--:--'
@@ -169,7 +178,7 @@ export default function AgentTheaterLoadingDesktop({
     if (!logRef.current) return
     const target = logRef.current
     requestAnimationFrame(() => {
-      target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' })
+      scrollToBottom(target)
     })
   }, [logLines.length])
 
