@@ -140,7 +140,7 @@ flowchart TB
 ### g. 工程化
 - **后端**:Spring Boot 3.4.4 / Java 21 / Maven。同时引入 `spring-boot-starter-web`(MVC + Servlet 容器)和 `spring-boot-starter-webflux`(为了 SSE 用 Reactor `Flux`)。`me.paulschwarz:spring-dotenv:4.0.0` 加载 `.env`。
 - **API**:`PulseController`(`/api/pulse` 和兼容旧路径 `/pulse`)暴露 `POST /analyze`(同步 JSON)与 `GET /stream?runId=...`(`text/event-stream`)。
-- **CORS**:`CorsConfig` 从 `cors.allowed-origins` 读白名单,默认放 `localhost:5173 / pulse-frontend-tawny.vercel.app / pulse.odieyang.com`。
+- **CORS**:`CorsConfig` 从 `cors.allowed-origins` 读白名单,默认放 `localhost:5173 / pulse.odieyang.com`。
 - **前端**:React 19.2.4 + Vite 8 + TailwindCSS 4 + `@xyflow/react`(agent 编排可视化)+ framer-motion + recharts + react-markdown,组件覆盖 ControversyBoard / CampBattleBoard / SentimentChart / DramaScoreboard / ConfidenceGauge / AgentTheaterLoading / QuoteCards 等,Vitest + Testing Library 做单测。
 - **单 Jar 部署**:`pom.xml` 用 `frontend-maven-plugin 1.15.1` 在 `prepare-package` 阶段安装 Node 22.12.0 + npm 10.8.2、跑 `npm install && npm run build`,然后用 `maven-resources-plugin` 把 `frontend/dist` 拷到 Spring Boot 的 `static/` 里,`SpaFallbackFilter` 把所有非 `/api/**` 的 HTML GET 请求 forward 到 `/index.html` 走 SPA。
 - **容器化**:`Dockerfile` 多阶段构建,build stage 用 `maven:3.9.9-eclipse-temurin-21`,runtime 用 `eclipse-temurin:21-jre-jammy`,暴露 `8080`,`ENTRYPOINT` 走 `java $JAVA_OPTS -jar /app/pulse.jar`。
@@ -166,6 +166,5 @@ flowchart TB
 - **代码规模**:后端 Java 代码 `wc -l` 数到 5,159 行(含测试),但前端 React 行数没数,需要补;agent 数量按 `agent/` 目录是 10 个,但简历上写"10 个 agent"还是合并表述需要自己定。
 - **配置默认值已对齐到代码真实值**:`tavily.max-results=4`、`crawler.target-total=16`、`crawler.relevance.min-score=4`、`crawler.relevance.min-retain-count=2`、`crawler.relevance.min-retain-ratio=0.15`、`crawler.relevance.max-hashtags=2`(以 `application.properties` 为准,`.env.example` 已同步更新)。如果你跑 demo 时想用更"激进"的抓取参数(老 `.env.example` 里的 50 / 10 之类),建议作为"高吞吐档"在简历里单独列出来,而不是当默认值。
 - **没找到的东西(不要往简历里写)**:数据库、Redis、消息队列、向量库 / RAG、function calling / tool use、多轮对话记忆、streaming LLM 输出、Kubernetes manifests、`.github/workflows` CI/CD、docker-compose、APM / Langfuse / OpenTelemetry 集成、限流、auth/authz、用户系统 —— 这些项目里都没有。
-- **CORS 里残留的 `pulse-frontend-tawny.vercel.app`**:这是早期把前端单独部署到 Vercel 时留下的白名单条目,现在已经统一在 Railway 上跑单 Jar,这条 origin 可以从 `application.properties` 的默认 CORS 白名单里删掉,避免误以为线上仍有前后端分离的部署形态。
 - **测试覆盖率 / 测试数量**:简单数到了几个 test 文件,具体单测条数 / 覆盖率没跑,需要补。
 - **用户量 / demo 使用量**:0、需要自己补。
