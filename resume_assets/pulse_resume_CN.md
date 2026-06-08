@@ -144,7 +144,7 @@ flowchart TB
 - **前端**:React 19.2.4 + Vite 8 + TailwindCSS 4 + `@xyflow/react`(agent 编排可视化)+ framer-motion + recharts + react-markdown,组件覆盖 ControversyBoard / CampBattleBoard / SentimentChart / DramaScoreboard / ConfidenceGauge / AgentTheaterLoading / QuoteCards 等,Vitest + Testing Library 做单测。
 - **单 Jar 部署**:`pom.xml` 用 `frontend-maven-plugin 1.15.1` 在 `prepare-package` 阶段安装 Node 22.12.0 + npm 10.8.2、跑 `npm install && npm run build`,然后用 `maven-resources-plugin` 把 `frontend/dist` 拷到 Spring Boot 的 `static/` 里,`SpaFallbackFilter` 把所有非 `/api/**` 的 HTML GET 请求 forward 到 `/index.html` 走 SPA。
 - **容器化**:`Dockerfile` 多阶段构建,build stage 用 `maven:3.9.9-eclipse-temurin-21`,runtime 用 `eclipse-temurin:21-jre-jammy`,暴露 `8080`,`ENTRYPOINT` 走 `java $JAVA_OPTS -jar /app/pulse.jar`。
-- **生产部署**:Live demo 在 [pulse.odieyang.com](https://pulse.odieyang.com)(CORS 白名单已开此域名)。
+- **生产部署**:在 **Railway** 上跑同一个 Spring Boot Jar(由 Dockerfile 构建出的镜像直接托管),自定义域名 [pulse.odieyang.com](https://pulse.odieyang.com)(CORS 白名单已开此域名)。
 - **测试**:后端有 `PulseOrchestratorV2Tests`、`PulseControllerV2Tests`、`SynthesisAgentFormattingTests`、`TwitterAgentTests`、`AgentEventPublisherTests`、`PulseReportSerializationTests`;前端有 ~9 个组件 / hook / lib 测试文件(QuoteCards、ControversyAccordion、ControversyBoard、AgentTheaterLoading、ConfidenceGauge、SemanticSourceChip、DramaScoreboard、usePulseV2、apiCitationSources、apiNormalizeReport、controversyMapper)。
 
 ### h. 其他值得说的设计决策
@@ -158,7 +158,7 @@ flowchart TB
 - **Critic-as-judge 重写回路** —— 设计了一套基于 `confidenceScore` / `informationDensityScore` / `claimEvidenceCoverage` / `fluffFindings` 四维度的 LLM 自评分系统,只要任一维度低于阈值(60 / 55 / 60)就在 Java 层拼出 rewrite guidance 触发 Synthesis Agent 单轮定向重写,在不进入死循环的前提下显著降低低质量报告的产出率 [待确认: 重写命中率 / 重写后分数变化]。
 - **per-runId SSE 实时 trace** —— 用 Reactor `Sinks.Many.multicast()` + `ConcurrentHashMap<runId, Sink>` + `ThreadLocal<runId>` `withRunContext` 把每个 agent 的 `STARTED / COMPLETED / FAILED` 事件按请求隔离推送给前端,实现"Agent Theater" 可视化执行轨迹,把 LLM 流程从黑盒变成可观测过程;并发请求互不串流。
 - **可靠性工程** —— 用 `CompletableFuture` 并行化抓取 + 分析阶段;用 `safeRun(Supplier, default, name)` 包装每个 agent 失败时返回默认结果而不打断管线;对 LLM 综合输出做 6-section markdown 格式与"raw dump / 机械引文配对 / Frankenstein 实体"等多重校验,失败时回落到本地确定性 fallback,保证响应永远是合法 `PulseReport`。
-- **全栈交付 + 单 Jar 部署** —— React 19 + Vite 8 + Tailwind 4 + `@xyflow/react` 前端用 Maven `frontend-maven-plugin` 在 `prepare-package` 阶段构建并嵌入 Spring Boot Jar,`SpaFallbackFilter` 承担 SPA 路由,多阶段 Dockerfile(maven + temurin-21-jre)产出单镜像,部署到 [pulse.odieyang.com](https://pulse.odieyang.com)。
+- **全栈交付 + 单 Jar 部署** —— React 19 + Vite 8 + Tailwind 4 + `@xyflow/react` 前端用 Maven `frontend-maven-plugin` 在 `prepare-package` 阶段构建并嵌入 Spring Boot Jar,`SpaFallbackFilter` 承担 SPA 路由,多阶段 Dockerfile(maven + temurin-21-jre)产出单镜像,部署到 **Railway** + 自定义域名 [pulse.odieyang.com](https://pulse.odieyang.com)。
 
 ## ⚠️ 需我本人确认 / 补充的点
 
@@ -166,6 +166,6 @@ flowchart TB
 - **代码规模**:后端 Java 代码 `wc -l` 数到 5,159 行(含测试),但前端 React 行数没数,需要补;agent 数量按 `agent/` 目录是 10 个,但简历上写"10 个 agent"还是合并表述需要自己定。
 - **配置默认值已对齐到代码真实值**:`tavily.max-results=4`、`crawler.target-total=16`、`crawler.relevance.min-score=4`、`crawler.relevance.min-retain-count=2`、`crawler.relevance.min-retain-ratio=0.15`、`crawler.relevance.max-hashtags=2`(以 `application.properties` 为准,`.env.example` 已同步更新)。如果你跑 demo 时想用更"激进"的抓取参数(老 `.env.example` 里的 50 / 10 之类),建议作为"高吞吐档"在简历里单独列出来,而不是当默认值。
 - **没找到的东西(不要往简历里写)**:数据库、Redis、消息队列、向量库 / RAG、function calling / tool use、多轮对话记忆、streaming LLM 输出、Kubernetes manifests、`.github/workflows` CI/CD、docker-compose、APM / Langfuse / OpenTelemetry 集成、限流、auth/authz、用户系统 —— 这些项目里都没有。
-- **部署平台不明**:`pulse.odieyang.com` 跑在哪(VPS / Fly.io / Render / 自己服务器)需要你补;CORS 里有一个 `pulse-frontend-tawny.vercel.app`,说明前端可能也独立部署到过 Vercel,需要你确认现在的部署形态是"单 Jar 自托管"还是"前后端分离"。
+- **CORS 里残留的 `pulse-frontend-tawny.vercel.app`**:这是早期把前端单独部署到 Vercel 时留下的白名单条目,现在已经统一在 Railway 上跑单 Jar,这条 origin 可以从 `application.properties` 的默认 CORS 白名单里删掉,避免误以为线上仍有前后端分离的部署形态。
 - **测试覆盖率 / 测试数量**:简单数到了几个 test 文件,具体单测条数 / 覆盖率没跑,需要补。
 - **用户量 / demo 使用量**:0、需要自己补。
