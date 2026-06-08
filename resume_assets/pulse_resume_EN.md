@@ -12,52 +12,80 @@ Pulse replaces the manual "open one topic → tab-switch across X and Reddit →
 ## Architecture Diagram
 
 ```mermaid
-flowchart TD
-    User["User Browser (React 19 + Vite)"] -->|POST /api/pulse/analyze| API[PulseController<br/>Spring Boot 3.4.4]
-    User <-->|SSE /api/pulse/stream?runId| API
+flowchart TB
+    subgraph Client["Client Layer (React 19 + Vite 8)"]
+        UI["User Browser"]
+    end
 
-    API --> Orch[PulseOrchestrator<br/>multi-stage pipeline]
+    subgraph APILayer["API Layer (Spring Boot 3.4.4)"]
+        Ctrl["PulseController<br/>POST /analyze · GET /stream"]
+        Health["ApiHealthController"]
+        Spa["SpaFallbackFilter"]
+        Cors["CorsConfig"]
+    end
 
-    Orch -->|Stage 1| QP[QueryPlannerAgent]
-    QP --> LLM[OpenAI gpt-4o-mini<br/>via Spring AI ChatClient]
+    subgraph OrchLayer["Orchestration Layer"]
+        Orch["PulseOrchestrator<br/>6-stage pipeline · at-most-one rewrite"]
+    end
 
-    QP -->|reddit + twitter queries| RA[RedditAgent]
-    QP --> TA[TwitterAgent]
-    RA --> Tavily[TavilySearchService<br/>api.tavily.com/search]
+    subgraph Stage1["Stage 1 — Planning"]
+        QP["QueryPlannerAgent"]
+    end
+
+    subgraph Stage2["Stage 2 — Parallel Retrieval (CompletableFuture)"]
+        RA["RedditAgent"]
+        TA["TwitterAgent"]
+    end
+
+    subgraph Stage3["Stage 3 — Parallel Analysis (safeRun guarded)"]
+        SA["SentimentAgent (per platform)"]
+        StA["StanceAgent"]
+        CFA["ConflictAgent"]
+        AA["AspectAgent"]
+        FA["FlipRiskAgent"]
+    end
+
+    subgraph Stage4["Stage 4-6 — Synthesis & Critique"]
+        Syn["SynthesisAgent"]
+        Crit["CriticAgent"]
+        Rewrite["Synthesis rewrite (≤1×)"]
+    end
+
+    subgraph Ext["External Services"]
+        LLM["OpenAI gpt-4o-mini<br/>via Spring AI ChatClient"]
+        Tavily["Tavily Search API<br/>reddit.com · twitter.com / x.com"]
+    end
+
+    subgraph Bus["Event Bus (Reactor Sinks.Many)"]
+        Pub["AgentEventPublisher<br/>per-runId sink + ThreadLocal"]
+    end
+
+    UI -->|POST /api/pulse/analyze| Ctrl
+    UI <-->|SSE /api/pulse/stream?runId| Ctrl
+    Ctrl --> Orch
+
+    Orch --> Stage1
+    Stage1 --> Stage2
+    Stage2 --> Stage3
+    Stage3 --> Stage4
+    Stage4 -->|PulseReport JSON| Ctrl
+
+    Crit -->|low confidence / density / coverage / fluff| Rewrite
+
+    QP --> LLM
+    RA --> Tavily
     TA --> Tavily
-
-    Tavily --> SA[SentimentAgent]
-    Tavily --> StA[StanceAgent]
-    Tavily --> CFA[ConflictAgent]
-    Tavily --> AA[AspectAgent]
-    Tavily --> FA[FlipRiskAgent]
-
     SA --> LLM
     StA --> LLM
     CFA --> LLM
     AA --> LLM
     FA --> LLM
-
-    SA --> Syn[SynthesisAgent]
-    StA --> Syn
-    CFA --> Syn
-    AA --> Syn
-    FA --> Syn
-
     Syn --> LLM
-    Syn --> Crit[CriticAgent]
     Crit --> LLM
-
-    Crit -->|low confidence / density / coverage| Rewrite[SynthesisAgent revision]
     Rewrite --> LLM
-    Crit -->|pass| Report[PulseReport JSON]
-    Rewrite --> Report
 
-    Report --> API
-    API --> User
-
-    Orch -.AgentEvent.-> Pub[AgentEventPublisher<br/>Reactor Sinks.Many per runId]
-    Pub -.text/event-stream.-> User
+    Orch -.AgentEvent.-> Pub
+    Pub -.text/event-stream.-> UI
 ```
 
 ## Position in the AI Stack
